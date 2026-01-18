@@ -5,7 +5,7 @@ import { useNavigate, Link } from "react-router-dom";
 import logo from "../assets/logo-nobg.png";
 
 export default function Login() {
-  const { setToken } = useContext(AuthContext);
+  const { setToken, setUser } = useContext(AuthContext);
   const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
@@ -18,14 +18,13 @@ export default function Login() {
 
 try {
       const res = await apiPost("/auth/login", { email, password });
-
-    if (!res.token) {
-      setError(res.message || "Hibás bejelentkezés");
-      return;
-    }
-
-    setToken(res.token);
-    navigate("/dashboard");
+      if (!res.token) {
+        setError(res.message || "Hibás bejelentkezés");
+        return;
+      }
+      setToken(res.token);
+      setUser(res.user);
+      navigate("/dashboard");
 
     } catch (err) {
       console.error("Login error:", err);
@@ -36,7 +35,6 @@ try {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-10">
 
-      {/* Központi fehér kártya */}
       <div className="
         bg-white shadow-xl rounded-2xl 
         w-full max-w-4xl 
@@ -44,7 +42,6 @@ try {
         overflow-hidden
       ">
 
-        {/* Bal oldal – LOGÓ + szöveg */}
         <div className="flex flex-col items-center justify-center bg-gray-100 p-8 sm:p-10">
 
           <img
@@ -58,7 +55,6 @@ try {
           </h1>
         </div>
 
-        {/* Jobb oldal – FORM */}
         <div className="p-8 sm:p-10">
           <h2 className="text-lg sm:text-xl font-semibold mb-6">Bejelentkezés</h2>
 
@@ -71,6 +67,7 @@ try {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                placeholder="pl. teszt@email.hu"
                 className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-black"
               />
             </div>
@@ -82,6 +79,7 @@ try {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                placeholder="Jelszó"
                 className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-black"
               />
             </div>

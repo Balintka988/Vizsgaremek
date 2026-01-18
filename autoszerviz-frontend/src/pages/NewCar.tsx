@@ -1,4 +1,4 @@
-import { useState, useContext, useEffect } from "react";
+import { useState, useContext } from "react";
 import { AuthContext } from "../context/AuthContext";
 import { apiPost } from "../api/api";
 import { useNavigate } from "react-router";
@@ -11,35 +11,36 @@ export default function NewCar() {
   const [type, setType] = useState("");
   const [error, setError] = useState("");
 
-  useEffect(() => {}, [token]);
-
   const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setError("");
+    e.preventDefault();
+    setError("");
 
-  if (!licensePlate || !type) {
-    setError("Minden mező kitöltése kötelező!");
-    return;
-  }
+    if (!licensePlate || !type) {
+      setError("Minden mező kitöltése kötelező!");
+      return;
+    }
 
-  try {
-    await apiPost(
-      "/cars",
-      { license_plate: licensePlate, type },
-      token
-    );
+    try {
+      const res = await apiPost(
+        "/cars",
+        { license_plate: licensePlate, type },
+        token
+      );
 
-    navigate("/dashboard");
-  } catch (err) {
-    console.error("Autó hozzáadás hiba:", err);
-    setError("Nem sikerült csatlakozni a szerverhez.");
-  }
-};
+      if (res && res.message === "Autó hozzáadva") {
+        navigate("/dashboard");
+        return;
+      }
 
+      setError(res?.message || "Hiba történt az autó mentésekor.");
+    } catch (err) {
+      console.error("Autó hozzáadás hiba:", err);
+      setError("Nem sikerült csatlakozni a szerverhez.");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 flex justify-center items-center p-4">
-
       <div className="bg-white shadow-xl rounded-xl p-8 w-full max-w-lg">
         <button
           onClick={() => navigate("/dashboard")}

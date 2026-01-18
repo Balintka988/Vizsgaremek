@@ -62,10 +62,6 @@ if (res.message === "Sikeres regisztráció") {
   }
 };
 
-
-
-
-
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-10">
 
@@ -76,7 +72,6 @@ if (res.message === "Sikeres regisztráció") {
         overflow-hidden
       ">
 
-        {/* Bal oldal – LOGÓ */}
         <div className="flex flex-col items-center justify-center bg-gray-100 p-8 sm:p-10">
           <img
             src={logo}
@@ -89,7 +84,6 @@ if (res.message === "Sikeres regisztráció") {
           </h1>
         </div>
 
-        {/* Jobb oldal – FORM */}
         <div className="p-8 sm:p-10">
           <h2 className="text-lg sm:text-xl font-semibold mb-6">Regisztráció</h2>
 
@@ -103,6 +97,7 @@ if (res.message === "Sikeres regisztráció") {
                 required
                 value={form.name}
                 onChange={handleChange}
+                placeholder="pl. Teszt Elek"
                 className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-black"
               />
             </div>
@@ -115,6 +110,7 @@ if (res.message === "Sikeres regisztráció") {
                 required
                 value={form.email}
                 onChange={handleChange}
+                placeholder="pl. teszt@email.hu"
                 className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-black"
               />
             </div>
@@ -127,6 +123,7 @@ if (res.message === "Sikeres regisztráció") {
                 required
                 value={form.phone}
                 onChange={handleChange}
+                placeholder="pl. +36 30 123 4567"
                 className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-black"
               />
             </div>
@@ -139,6 +136,7 @@ if (res.message === "Sikeres regisztráció") {
                 required
                 value={form.password}
                 onChange={handleChange}
+                placeholder="Jelszó"
                 className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-black"
               />
             </div>

@@ -1,14 +1,22 @@
 export const API_URL = "http://localhost:3000/api";
-
+ 
 export const apiGet = async (url: string, token: string | null) => {
   const res = await fetch(API_URL + url, {
     headers: {
       Authorization: token ? `Bearer ${token}` : "",
     },
   });
-  return res.json();
+ 
+  const responseData = await res.json().catch(() => ({}));
+ 
+  if (!res.ok) {
+    const msg = (responseData as any)?.message || `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+ 
+  return responseData;
 };
-
+ 
 export const apiPost = async (
   url: string,
   data: any,
@@ -22,5 +30,13 @@ export const apiPost = async (
     },
     body: JSON.stringify(data),
   });
-  return res.json();
+ 
+  const responseData = await res.json().catch(() => ({}));
+ 
+  if (!res.ok) {
+    const msg = (responseData as any)?.message || `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+ 
+  return responseData;
 };
