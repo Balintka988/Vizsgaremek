@@ -4,6 +4,7 @@ import authRoutes from "./authRoutes";
 import carRoutes from "./carRoutes";
 import serviceRoutes from "./serviceRoutes";
 import userRoutes from "./userRoutes";
+import notificationRoutes from "./notificationRoutes";
 
 
 const router = Router();
@@ -13,5 +14,6 @@ router.use("/auth", authRoutes);
 router.use("/cars", carRoutes);
 router.use("/services", serviceRoutes);
 router.use("/users", userRoutes);
+router.use("/notifications", notificationRoutes);
 
 export default router;

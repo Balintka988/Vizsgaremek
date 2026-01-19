@@ -9,8 +9,12 @@ export const verifyToken = (req: Request, res: Response, next: NextFunction) => 
     return res.status(403).json({ message: "Token szükséges!" });
   }
 
-  const token = authHeader.split(" ")[1];
+  const parts = authHeader.split(" ");
+  if (parts.length !== 2 || parts[0] !== "Bearer") {
+    return res.status(403).json({ message: "Token nem megfelelő formátum!" });
+  }
 
+  const token = parts[1];
   if (!token) {
     return res.status(403).json({ message: "Token nem megfelelő formátum!" });
   }
@@ -18,8 +22,8 @@ export const verifyToken = (req: Request, res: Response, next: NextFunction) => 
   try {
     const decoded = jwt.verify(token, config.jwtSecret);
     (req as any).user = decoded;
-    next();
-  } catch (err) {
+    return next();
+  } catch (_err) {
     return res.status(401).json({ message: "Érvénytelen token!" });
   }
 };

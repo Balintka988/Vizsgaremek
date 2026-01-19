@@ -9,4 +9,5 @@ export const db = mysql.createPool({
   port: config.db.port,
   waitForConnections: true,
   connectionLimit: 10,
+  dateStrings: true,
 });
