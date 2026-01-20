@@ -5,6 +5,7 @@ import carRoutes from "./carRoutes";
 import serviceRoutes from "./serviceRoutes";
 import userRoutes from "./userRoutes";
 import notificationRoutes from "./notificationRoutes";
+import bookingRoutes from "./bookingRoutes";
 
 
 const router = Router();
@@ -15,5 +16,6 @@ router.use("/cars", carRoutes);
 router.use("/services", serviceRoutes);
 router.use("/users", userRoutes);
 router.use("/notifications", notificationRoutes);
+router.use("/bookings", bookingRoutes);
 
 export default router;
