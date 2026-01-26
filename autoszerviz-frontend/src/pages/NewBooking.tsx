@@ -2,6 +2,8 @@ import { useContext, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { AuthContext } from "../context/AuthContext";
 import { apiGet, apiPost } from "../api/api";
+import Navbar from "../components/Navbar";
+import Footer from "../components/Footer";
 
 
 interface Car {
@@ -163,6 +165,7 @@ export default function NewBooking() {
 
   return (
     <>
+    <Navbar />
       <main className="min-h-screen bg-gray-50 px-6 py-6">
         <button
           onClick={() => navigate("/dashboard?tab=bookings")}
@@ -377,6 +380,7 @@ export default function NewBooking() {
           </div>
         </form>
       </main>
+      <Footer />
     </>
   );
 }

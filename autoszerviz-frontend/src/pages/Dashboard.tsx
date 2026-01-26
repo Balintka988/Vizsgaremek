@@ -3,6 +3,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
 import { apiGet, apiPut, apiDelete } from "../api/api";
 import { formatBookingHu } from "../utils/datetime";
+import Navbar from "../components/Navbar";
+import Footer from "../components/Footer";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
@@ -253,6 +255,7 @@ export default function Dashboard() {
 
   return (
     <>
+    <Navbar />
       <div className="min-h-screen bg-gray-50 px-6 py-6 flex flex-col gap-6">
         <h1 className="text-3xl font-semibold">
           {`Üdvözöljük${user?.name ? `, ${user.name.split(" ")[0]}!` : " az irányítópulton!"}`}
@@ -676,6 +679,7 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+      <Footer />
     </>
   );
 }
