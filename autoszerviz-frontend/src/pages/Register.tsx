@@ -2,6 +2,8 @@ import { useState } from "react";
 import { apiPost } from "../api/api";
 import { useNavigate, Link } from "react-router-dom";
 import logo from "../assets/logo-nobg.png";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+
 
 export default function Register() {
   const navigate = useNavigate();
@@ -64,6 +66,18 @@ if (res.message === "Sikeres regisztráció") {
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-10">
+    <Link
+      to="/"
+      className="
+        absolute top-6 left-6
+        flex items-center gap-2
+        text-gray-700 hover:text-black
+        transition
+      "
+    >
+      <ArrowBackIcon fontSize="small" />
+      <span className="text-sm font-medium">Vissza a főoldalra</span>
+    </Link>
 
       <div className="
         bg-white shadow-xl rounded-2xl 
