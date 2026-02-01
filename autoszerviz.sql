@@ -22,13 +22,13 @@ CREATE TABLE services (
     work_hours DECIMAL(5,2) NOT NULL
 );
 
-INSERT INTO services (name, description, price) VALUES
-('Olajcsere', 'Motorolaj és olajszűrő cseréje, ellenőrzés', 12000),
-('Fékbetét csere (első)', 'Fékbetétek cseréje, fékrendszer ellenőrzése', 15000),
-('Féktárcsa csere (pár)', 'Fékbetétek és tárcsák cseréje, bejáratás', 25000),
-('Futómű beállítás', 'Digitális futóműbeállítás, kormánygeometria', 14900),
-('Diagnosztika', 'Hibakód olvasás, törlés, alapbeállítások', 6000),
-('Vásárlás előtti csomag', 'Autó teljeskörű átvizsgálása', 18000);
+INSERT INTO services (name, price, work_hours) VALUES
+('Olajcsere', 12000.00, 1.00),
+('Fékbetét csere (első)', 15000.00, 1.20),
+('Féktárcsa csere (pár)', 25000.00, 2.00),
+('Futómű beállítás', 14900.00, 1.00),
+('Diagnosztika', 6000.00, 0.50),
+('Vásárlás előtti csomag', 18000.00, 1.50);
 
 
 CREATE TABLE bookings (
