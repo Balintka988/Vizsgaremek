@@ -65,6 +65,27 @@ export class BookingService {
     return rows;
   }
 
+  static async listAllBookings() {
+    const [rows] = await db.execute(`
+      SELECT 
+        bookings.*,
+        DATE(bookings.date) AS date_key,
+        users.name AS user_name, 
+        users.phone AS user_phone,
+        cars.license_plate AS license_plate, 
+        cars.type AS car_type,
+        services.name AS service_name,
+        services.work_hours AS service_work_hours,
+        services.price AS service_price
+      FROM bookings
+      JOIN users ON bookings.user_id = users.id
+      JOIN cars ON bookings.car_id = cars.id
+      LEFT JOIN services ON bookings.service_id = services.id
+      ORDER BY bookings.date DESC
+    `);
+    return rows;
+  }
+
   static async listBookingsBetween(from: string, to: string) {
     const [rows] = await db.execute(
       `
@@ -77,6 +98,45 @@ export class BookingService {
     return rows;
   }
 
+  static async updateBooking(id: number, data: any) {
+    const fields: string[] = [];
+    const values: any[] = [];
+    if (data.status) {
+      fields.push("status = ?");
+      values.push(data.status);
+    }
+    if (data.date) {
+      fields.push("date = ?");
+      values.push(data.date);
+    }
+    if (data.note) {
+      fields.push("note = ?");
+      values.push(data.note);
+    }
+    if (data.hours !== undefined) {
+      fields.push("hours = ?");
+      values.push(data.hours);
+    }
+    if (data.cost !== undefined) {
+      fields.push("cost = ?");
+      values.push(data.cost);
+    }
+    if (data.description !== undefined) {
+      fields.push("description = ?");
+      values.push(data.description);
+    }
+    if (data.noteToClient !== undefined) {
+      fields.push("note_to_client = ?");
+      values.push(data.noteToClient);
+    }
+    if (fields.length === 0) {
+      return;
+    }
+    const sql = `UPDATE bookings SET ${fields.join(", ")} WHERE id = ?`;
+    values.push(id);
+    await db.execute(sql, values);
+  }
+
   static async getLatestStatusByCarId(carId: number) {
     const [rows]: any = await db.execute(
       "SELECT status FROM bookings WHERE car_id = ? ORDER BY date DESC LIMIT 1",
@@ -85,7 +145,7 @@ export class BookingService {
     return rows.length > 0 ? rows[0].status : null;
   }
 
-  static async cancelBooking(id: number, userId: number) {
+  static async cancelBooking(id: number, requester: { id: number; role: string }) {
     const [rows]: any = await db.execute(
       "SELECT id, user_id, status FROM bookings WHERE id = ?",
       [id]
@@ -97,11 +157,17 @@ export class BookingService {
     const status = String(booking.status || "").toLowerCase();
     const isDone = status.includes("kész") || status.includes("befejezve");
 
-    if (Number(booking.user_id) != Number(userId)) {
-      throw new Error("Nincs jogosultság a foglalás törléséhez");
-    }
-    if (isDone) {
-      throw new Error("A kész/befejezett foglalás nem törölhető");
+    if (requester.role === "admin") {
+      if (!isDone) {
+        throw new Error("Csak a kész/befejezett foglalások törölhetők");
+      }
+    } else {
+      if (Number(booking.user_id) !== Number(requester.id)) {
+        throw new Error("Nincs jogosultság a foglalás törléséhez");
+      }
+      if (isDone) {
+        throw new Error("A kész/befejezett foglalás nem törölhető");
+      }
     }
 
     return db.execute("DELETE FROM bookings WHERE id = ?", [id]);

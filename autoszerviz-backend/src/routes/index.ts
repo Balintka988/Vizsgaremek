@@ -7,7 +7,6 @@ import userRoutes from "./userRoutes";
 import notificationRoutes from "./notificationRoutes";
 import bookingRoutes from "./bookingRoutes";
 
-
 const router = Router();
 
 router.get("/health", healthCheck);

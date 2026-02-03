@@ -22,7 +22,10 @@ export const getBookings = async (req: Request, res: Response) => {
       return res.status(401).json({ message: "Nincs bejelentkezve" });
     }
 
-    const rows = await BookingService.listBookings(user.id);
+    const rows =
+      user.role === "admin"
+        ? await BookingService.listAllBookings()
+        : await BookingService.listBookings(user.id);
 
     return res.json(rows);
   } catch (err: any) {
@@ -30,6 +33,24 @@ export const getBookings = async (req: Request, res: Response) => {
   }
 };
 
+export const updateBooking = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Nincs jogosultság a módosításhoz" });
+    }
+
+    const bookingId = Number(req.params.id);
+    if (!Number.isFinite(bookingId)) {
+      return res.status(400).json({ message: "Hibás azonosító" });
+    }
+
+    await BookingService.updateBooking(bookingId, req.body);
+    return res.json({ message: "Foglalás frissítve" });
+  } catch (err: any) {
+    return res.status(400).json({ message: err?.message ?? "Hiba" });
+  }
+};
 
 export const cancelBooking = async (req: Request, res: Response) => {
   try {
@@ -43,7 +64,10 @@ export const cancelBooking = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Hibás azonosító" });
     }
 
-    const result = await BookingService.cancelBooking(bookingId, user.id);
+    const result = await BookingService.cancelBooking(bookingId, {
+      id: user.id,
+      role: user.role,
+    });
 
     return res.json({ message: "Foglalás törölve", result });
   } catch (err: any) {
