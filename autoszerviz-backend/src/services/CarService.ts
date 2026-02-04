@@ -6,6 +6,16 @@ export class CarService {
     return rows;
   }
 
+  static async listAllCars() {
+    const [rows] = await db.execute(
+      `SELECT cars.*, users.name AS user_name, users.phone AS user_phone
+       FROM cars
+       JOIN users ON cars.owner_id = users.id
+       ORDER BY cars.id DESC`
+    );
+    return rows;
+  }
+
   static async getCarById(carId: number, userId: number) {
     const [rows]: any = await db.execute(
       "SELECT * FROM cars WHERE id = ? AND owner_id = ?",

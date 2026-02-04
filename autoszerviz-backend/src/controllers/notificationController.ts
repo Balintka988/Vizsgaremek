@@ -34,6 +34,29 @@ export const markAsRead = async (req: Request, res: Response) => {
   }
 };
 
+export const sendNotification = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Nincs jogosultság" });
+    }
+
+    const { userIds, type, message } = req.body;
+    if (!Array.isArray(userIds) || !message) {
+      return res.status(400).json({ message: "Hiányzó userIds vagy message" });
+    }
+
+    for (const uid of userIds) {
+      const n = Number(uid);
+      if (!Number.isFinite(n)) continue;
+      await NotificationService.createNotification(n, type || "other", message);
+    }
+
+    return res.json({ message: "Értesítések elküldve" });
+  } catch (err: any) {
+    return res.status(400).json({ message: err?.message ?? "Hiba" });
+  }
+};
 
 export const deleteNotification = async (req: Request, res: Response) => {
   try {

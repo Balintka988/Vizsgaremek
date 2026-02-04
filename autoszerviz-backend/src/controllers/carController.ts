@@ -5,7 +5,12 @@ export const getCars = async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
     const userId = user?.id;
-    const cars = await CarService.listByUser(userId);
+    const role = user?.role;
+
+    const cars =
+      role === "admin"
+        ? await CarService.listAllCars()
+        : await CarService.listByUser(userId);
 
     return res.json(cars);
   } catch (err: any) {
