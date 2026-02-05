@@ -31,4 +31,11 @@ export class UserService {
     await db.execute(sql, values);
     return this.getProfile(userId);
   }
+
+  static async listUsers() {
+    const [rows] = await db.execute(
+      "SELECT id, name, email, phone FROM users WHERE role = 'user' ORDER BY name ASC"
+    );
+    return rows;
+  }
 }

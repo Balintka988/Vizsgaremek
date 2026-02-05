@@ -23,3 +23,19 @@ export const updateProfile = async (req: Request, res: Response) => {
     return res.status(500).json({ message: err.message || "Profil frissítése sikertelen" });
   }
 };
+
+export const listUsers = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Nincs jogosultság" });
+    }
+
+    const users = await UserService.listUsers();
+    return res.json(users);
+  } catch (err: any) {
+    console.error(err);
+    return res.status(500).json({ message: err.message || "Felhasználók lekérése sikertelen" });
+  }
+};
