@@ -5,6 +5,7 @@ import { AuthContext } from "./AuthContext";
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [token, setTokenState] = useState<string | null>(null);
   const [user, setUserState] = useState<any | null>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const loadAuth = async () => {
@@ -20,6 +21,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           localStorage.removeItem("user");
         }
       }
+      setReady(true);
     };
     loadAuth();
   }, []);
@@ -51,7 +53,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <AuthContext.Provider
-      value={{ token, user, setToken, setUser, logout }}
+      value={{ token, user, ready, setToken, setUser, logout }}
     >
       {children}
     </AuthContext.Provider>

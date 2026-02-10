@@ -26,7 +26,8 @@ try {
       }
       setToken(res.token);
       setUser(res.user);
-      navigate("/dashboard");
+      const role = res.user?.role;
+      navigate(role === "admin" ? "/admin" : "/dashboard");
 
     } catch (err) {
       console.error("Login error:", err);

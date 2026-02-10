@@ -39,7 +39,7 @@ interface Notification {
 
 
 export default function Dashboard() {
-  const { token, user, setUser } = useContext(AuthContext);
+  const { token, user, ready, setUser } = useContext(AuthContext);
   const navigate = useNavigate();
   const location = useLocation();
   const [cars, setCars] = useState<Car[]>([]);
@@ -105,10 +105,11 @@ export default function Dashboard() {
   }, [token]);
 
   useEffect(() => {
+    if (!ready) return;
     if (!token || !user) {
       navigate("/login");
     }
-  }, [token, user, navigate]);
+  }, [token, user, ready, navigate]);
 
   const handleDelete = async (id: number) => {
     if (!confirm("Biztos törlöd ezt az autót?")) return;
