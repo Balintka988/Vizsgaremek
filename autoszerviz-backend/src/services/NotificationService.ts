@@ -1,3 +1,4 @@
+import { ResultSetHeader } from "mysql2";
 import { db } from "../config/db";
 
 export class NotificationService {
@@ -22,7 +23,15 @@ export class NotificationService {
     const notifType = type || "other";
     const sql =
       "INSERT INTO notifications (user_id, type, message, date, is_read) VALUES (?, ?, ?, UTC_TIMESTAMP(), 0)";
-    return db.execute(sql, [userId, notifType, message]);
+
+    const [result] = await db.execute<ResultSetHeader>(sql, [userId, notifType, message]);
+
+    const [rows]: any = await db.execute(
+      "SELECT * FROM notifications WHERE id = ? LIMIT 1",
+      [result.insertId]
+    );
+
+    return rows?.[0] ?? null;
   }
 
   static async deleteNotification(id: number) {

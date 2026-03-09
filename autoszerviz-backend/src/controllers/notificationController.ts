@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { NotificationService } from "../services/NotificationService";
+import { sendToUser } from "../app/websocket";
 
 export const getNotifications = async (req: Request, res: Response) => {
   try {
@@ -49,7 +50,19 @@ export const sendNotification = async (req: Request, res: Response) => {
     for (const uid of userIds) {
       const n = Number(uid);
       if (!Number.isFinite(n)) continue;
-      await NotificationService.createNotification(n, type || "other", message);
+
+      const createdNotification = await NotificationService.createNotification(
+        n,
+        type || "other",
+        message
+      );
+
+      sendToUser(n, {
+        type: "notification",
+        notification: createdNotification,
+        notificationType: type || "other",
+        message,
+      });
     }
 
     return res.json({ message: "Értesítések elküldve" });
