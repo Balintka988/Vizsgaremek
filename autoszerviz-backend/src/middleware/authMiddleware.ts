@@ -27,3 +27,9 @@ export const verifyToken = (req: Request, res: Response, next: NextFunction) => 
     return res.status(401).json({ message: "Érvénytelen token!" });
   }
 };
+
+export const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
+  const user = (req as any).user as any;
+  if (user?.role === "admin") return next();
+  return res.status(403).json({ message: "Nincs jogosultságod ehhez a művelethez!" });
+};

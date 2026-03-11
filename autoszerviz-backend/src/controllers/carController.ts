@@ -35,6 +35,32 @@ export const getCarById = async (req: Request, res: Response) => {
   }
 };
 
+export const getCarByPlate = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const userId = user?.id;
+    const role = user?.role;
+    const plate = String(req.params.licensePlate ?? "").trim();
+
+    if (!plate) {
+      return res.status(400).json({ message: "Hiányzó rendszám" });
+    }
+
+    const car =
+      role === "admin"
+        ? await CarService.getCarByPlateAdmin(plate)
+        : await CarService.getCarByPlateForUser(plate, userId);
+
+    if (!car) {
+      return res.status(404).json({ message: "Nincs ilyen autó" });
+    }
+
+    return res.json(car);
+  } catch (err: any) {
+    return res.status(400).json({ message: err.message });
+  }
+};
+
 export const addCar = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;

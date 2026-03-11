@@ -25,12 +25,30 @@ export class CarService {
     return rows[0] || null;
   }
 
+  static async getCarByPlateForUser(licensePlate: string, userId: number) {
+    const plate = String(licensePlate ?? "").trim();
+    const [rows]: any = await db.execute(
+      "SELECT * FROM cars WHERE license_plate = ? AND owner_id = ? LIMIT 1",
+      [plate, userId]
+    );
+    return rows[0] || null;
+  }
+
+  static async getCarByPlateAdmin(licensePlate: string) {
+    const plate = String(licensePlate ?? "").trim();
+    const [rows]: any = await db.execute(
+      "SELECT cars.*, users.name AS user_name, users.phone AS user_phone FROM cars JOIN users ON cars.owner_id = users.id WHERE cars.license_plate = ? LIMIT 1",
+      [plate]
+    );
+    return rows[0] || null;
+  }
+
   static async addCar(userId: number, data: any) {
+    const brandGroup = String(data?.brand_group ?? "atlagos").trim() || "atlagos";
     const sql = `
-      INSERT INTO cars (owner_id, license_plate, type, status)
-      VALUES (?, ?, ?, ?)
-    `;
-    const values = [userId, data.license_plate, data.type, "Nincs státusz"];
+      INSERT INTO cars (owner_id, license_plate, type, brand_group, status)
+      VALUES (?, ?, ?, ?, ?)`;
+    const values = [userId, data.license_plate, data.type, brandGroup, "Nincs státusz"];
     return db.execute(sql, values);
   }
 
@@ -48,11 +66,9 @@ export class CarService {
       values.push(data.type);
     }
 
-    let normalizedStatus: string | null = null;
-    if (data.status !== undefined) {
-      normalizedStatus = data.status === "" ? "Nincs státusz" : String(data.status);
-      fields.push("status = ?");
-      values.push(normalizedStatus);
+    if (data.brand_group !== undefined) {
+      fields.push("brand_group = ?");
+      values.push(String(data.brand_group || "atlagos"));
     }
 
     if (fields.length === 0) {
@@ -62,13 +78,6 @@ export class CarService {
     const sql = `UPDATE cars SET ${fields.join(", ")} WHERE id = ?`;
     values.push(id);
     const result = await db.execute(sql, values);
-
-    if (normalizedStatus !== null) {
-      await db.execute(
-        "UPDATE bookings SET status = ? WHERE car_id = ? AND status != 'Kész'",
-        [normalizedStatus, id]
-      );
-    }
 
     return result;
   }
