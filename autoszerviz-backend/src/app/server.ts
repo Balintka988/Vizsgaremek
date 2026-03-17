@@ -19,6 +19,6 @@ const server = http.createServer(app);
 
 initWebSocket(server);
 
-app.listen(config.port, () => {
+server.listen(config.port, () => {
   console.log(`Szerver elindult a ${config.port} porton`);
 });
