@@ -1,4 +1,5 @@
 export const API_URL = "http://localhost:3000/api";
+export const WS_URL = API_URL.replace(/^http/i, "ws").replace(/\/api$/, "/ws");
 
 type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
 

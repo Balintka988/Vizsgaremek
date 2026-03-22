@@ -9,6 +9,7 @@ export default function NewCar() {
 
   const [licensePlate, setLicensePlate] = useState("");
   const [type, setType] = useState("");
+  const [brandGroup, setBrandGroup] = useState<"atlagos" | "nemet" | "olcso">("atlagos");
   const [error, setError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -23,7 +24,7 @@ export default function NewCar() {
     try {
       const res = await apiPost(
         "/cars",
-        { license_plate: licensePlate, type },
+        { license_plate: licensePlate, type, brand_group: brandGroup },
         token
       );
 
@@ -70,6 +71,22 @@ export default function NewCar() {
               placeholder="pl. Opel Astra 1.6"
               className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-black"
             />
+          </div>
+
+          <div>
+            <label className="block mb-1 text-gray-700">Márka csoport</label>
+            <select
+              value={brandGroup}
+              onChange={(e) => setBrandGroup(e.target.value as "atlagos" | "nemet" | "olcso")}
+              className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-black bg-white"
+            >
+              <option value="atlagos">Átlagos (alapár)</option>
+              <option value="nemet">Német csoport (drágább)</option>
+              <option value="olcso">Dacia / Suzuki (olcsóbb)</option>
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              A kiválasztott csoport alapján számolódik az olajcsere, fékcsere stb. ára.
+            </p>
           </div>
 
           {error && <p className="text-red-600">{error}</p>}

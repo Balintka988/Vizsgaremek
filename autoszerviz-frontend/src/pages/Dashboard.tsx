@@ -1,8 +1,8 @@
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
-import { apiGet, apiPut, apiDelete } from "../api/api";
-import { formatBookingHu } from "../utils/datetime";
+import { apiDelete, apiGet, apiPut, WS_URL } from "../api/api";
+import { formatBookingHu, formatNotificationHu } from "../utils/datetime";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import EditIcon from "@mui/icons-material/Edit";
@@ -17,6 +17,7 @@ interface Car {
   license_plate: string;
   type: string;
   status: string;
+  brand_group?: string;
 }
 
 interface Booking {
@@ -25,6 +26,14 @@ interface Booking {
   date: string;
   note: string;
   status: string;
+  hours?: number | null;
+  cost?: number | null;
+  description?: string | null;
+  note_to_client?: string | null;
+  noteToClient?: string | null;
+  service_names?: string | null;
+  service_total_hours?: number | null;
+  service_total_price?: number | null;
 }
 
 interface Notification {
@@ -35,9 +44,6 @@ interface Notification {
   type?: string;
 }
 
-
-
-
 export default function Dashboard() {
   const { token, user, ready, setUser } = useContext(AuthContext);
   const navigate = useNavigate();
@@ -46,6 +52,8 @@ export default function Dashboard() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
+  const [openSummaries, setOpenSummaries] = useState<Record<number, boolean>>({});
+
   const [selectedTab, setSelectedTab] = useState<
     "autos" | "bookings" | "notifications" | "profile"
   >(() => {
@@ -66,14 +74,45 @@ export default function Dashboard() {
     | { type: "error" | "success"; text: string }
     | null
   >(null);
+  const statusModalCarRef = useRef<Car | null>(null);
 
   const [editLicense, setEditLicense] = useState<string>("");
   const [editType, setEditType] = useState<string>("");
+  const [editBrandGroup, setEditBrandGroup] = useState<string>("atlagos");
   const [editMessage, setEditMessage] = useState<
     | { type: "error" | "success"; text: string }
     | null
   >(null);
 
+  const reloadNotifications = async () => {
+    if (!token) return;
+    try {
+      const notifData = await apiGet("/notifications", token);
+      setNotifications(Array.isArray(notifData) ? notifData : []);
+    } catch (err) {
+      console.error("Értesítések frissítése sikertelen:", err);
+    }
+  };
+
+  const reloadBookings = async () => {
+    if (!token) return;
+    try {
+      const bookingData = await apiGet("/bookings", token);
+      setBookings(Array.isArray(bookingData) ? bookingData : []);
+    } catch (err) {
+      console.error("Foglalások frissítése sikertelen:", err);
+    }
+  };
+
+  const reloadCars = async () => {
+    if (!token) return;
+    try {
+      const carData = await apiGet("/cars", token);
+      setCars(Array.isArray(carData) ? carData : []);
+    } catch (err) {
+      console.error("Autók frissítése sikertelen:", err);
+    }
+  };
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -103,6 +142,43 @@ export default function Dashboard() {
 
     if (token) loadData();
   }, [token]);
+  useEffect(() => {
+    statusModalCarRef.current = statusModalCar;
+  }, [statusModalCar]);
+
+  useEffect(() => {
+    if (!token || !user?.id) return;
+
+    const ws = new WebSocket(WS_URL);
+
+    ws.addEventListener("open", () => {
+      ws.send(JSON.stringify({ type: "join", token }));
+    });
+
+    ws.addEventListener("message", async (event) => {
+      try {
+        const data = JSON.parse(String(event.data || "{}"));
+        if (data?.type === "notification") {
+          await Promise.all([reloadNotifications(), reloadBookings()]);
+          return;
+        }
+
+        if (data?.type === "car_status_updated") {
+          await reloadCars();
+          const currentPlate = String(statusModalCarRef.current?.license_plate ?? "").trim();
+          const updatedPlate = String(data?.license_plate ?? "").trim();
+          if (currentPlate && updatedPlate && currentPlate.toLowerCase() === updatedPlate.toLowerCase()) {
+            await openStatusModal(currentPlate);
+          }
+        }
+      } catch (_err) {
+      }
+    });
+
+    return () => {
+      ws.close();
+    };
+  }, [token, user?.id]);
 
   useEffect(() => {
     if (!ready) return;
@@ -137,6 +213,7 @@ export default function Dashboard() {
   };
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
+  const firstName = String(user?.name ?? "").trim().split(/\s+/).filter(Boolean).at(-1) ?? "";
 
   const isActiveStatus = (status: any) => String(status ?? "") !== "Kész";
   const activeBookings = bookings.filter((b) => isActiveStatus(b.status)).length;
@@ -146,9 +223,10 @@ export default function Dashboard() {
     navigate(`/dashboard?tab=${tab}`);
   };
 
-  const openStatusModal = async (carId: number) => {
+  const openStatusModal = async (licensePlate: string) => {
     try {
-      const data = await apiGet(`/cars/${carId}`, token);
+      const plate = String(licensePlate ?? "").trim();
+      const data = await apiGet(`/cars/plate/${encodeURIComponent(plate)}`, token);
       setStatusModalCar(data);
     } catch (err) {
       console.error("Nem sikerült betölteni az autó adatait:", err);
@@ -161,6 +239,7 @@ export default function Dashboard() {
       setEditModalCar(data);
       setEditLicense(data.license_plate);
       setEditType(data.type);
+      setEditBrandGroup(data.brand_group || "atlagos");
       setEditMessage(null);
     } catch (err) {
       console.error("Nem sikerült betölteni az autó adatait:", err);
@@ -217,7 +296,11 @@ export default function Dashboard() {
       return;
     }
 
-    if (editLicense === editModalCar.license_plate && editType === editModalCar.type) {
+    if (
+      editLicense === editModalCar.license_plate &&
+      editType === editModalCar.type &&
+      (editBrandGroup || "atlagos") === (editModalCar.brand_group || "atlagos")
+    ) {
       setEditMessage({ type: "error", text: "Nem történt változtatás." });
       return;
     }
@@ -225,13 +308,20 @@ export default function Dashboard() {
     try {
       await apiPut(
         `/cars/${editModalCar.id}`,
-        { license_plate: editLicense, type: editType },
+        { license_plate: editLicense, type: editType, brand_group: editBrandGroup },
         token
       );
 
       setCars((prev) =>
         prev.map((c) =>
-          c.id === editModalCar.id ? { ...c, license_plate: editLicense, type: editType } : c
+          c.id === editModalCar.id
+            ? {
+                ...c,
+                license_plate: editLicense,
+                type: editType,
+                brand_group: editBrandGroup,
+              }
+            : c
         )
       );
 
@@ -254,12 +344,24 @@ export default function Dashboard() {
     }
   };
 
+  const brandGroupLabel = (bg: string | undefined) => {
+    switch (bg) {
+      case "nemet":
+        return "Német (drágább)";
+      case "olcso":
+        return "Dacia / Suzuki (olcsóbb)";
+      case "atlagos":
+      default:
+        return "Átlagos";
+    }
+  };
+
   return (
     <>
     <Navbar />
       <div className="min-h-screen bg-gray-50 px-6 py-6 flex flex-col gap-6">
         <h1 className="text-3xl font-semibold">
-          {`Üdvözöljük${user?.name ? `, ${user.name.split(" ")[0]}!` : " az irányítópulton!"}`}
+          {`Üdvözöljük${firstName ? `, ${firstName}!` : " az irányítópulton!"}`}
         </h1>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -352,12 +454,13 @@ export default function Dashboard() {
                       <div>
                         <h3 className="text-xl font-semibold">{car.license_plate}</h3>
                         <p className="text-gray-700">{car.type}</p>
+                        <p className="text-sm text-gray-500">Márka csoport: {brandGroupLabel(car.brand_group)}</p>
                       </div>
 
                       <div className="flex justify-between items-center mt-4">
                         <button
                           className="bg-black text-white px-3 py-2 rounded-lg text-sm"
-                          onClick={() => openStatusModal(car.id)}
+                          onClick={() => openStatusModal(car.license_plate)}
                         >
                           Státusz megtekintése
                         </button>
@@ -395,36 +498,93 @@ export default function Dashboard() {
               <p>Még nincs időpontfoglalása.</p>
             ) : (
               <div className="space-y-4">
-                {bookings.map((b) => (
-                  <div
-                    key={b.id}
-                    className="bg-white p-4 rounded-xl shadow border flex flex-col sm:flex-row sm:justify-between"
-                  >
-                    <div>
-                      <p className="font-medium">{formatBookingHu(b.date)}</p>
+                {bookings.map((b) => {
+                  const isDone = String(b.status ?? "") === "Kész";
+                  const isOpen = !!openSummaries[b.id];
+                  const doneNote = String((b.note_to_client ?? b.noteToClient) ?? "").trim();
+                  const hasWorkText = !!(String(b.description ?? "").trim() || String(b.service_names ?? "").trim());
+                  const hasHours = b.hours != null || b.service_total_hours != null;
+                  const hasCost = b.cost != null || b.service_total_price != null;
 
-                      <p className="text-gray-700">
-                        {cars.find((c) => c.id === b.car_id)?.license_plate || ""}
-                      </p>
+                  return (
+                    <div key={b.id} className="bg-white p-4 rounded-xl shadow border grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="min-w-0">
+                        <p className="font-medium">{formatBookingHu(b.date)}</p>
 
-                      {b.note && (
-                        <p className="text-sm text-gray-600 mt-1 truncate">{b.note}</p>
+                        <p className="text-gray-700">
+                          {cars.find((c) => c.id === b.car_id)?.license_plate || ""}
+                        </p>
+
+                        {b.note && (
+                          <p className="text-sm text-gray-600 mt-1 truncate">{b.note}</p>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col items-start sm:items-end gap-2 min-w-0">
+                        <span
+                          className={`px-3 py-1 rounded-full text-sm font-medium ${
+                            isActiveStatus(b.status)
+                              ? "bg-blue-100 text-blue-800"
+                              : "bg-green-100 text-green-800"
+                          }`}
+                        >
+                          {b.status}
+                        </span>
+
+                        {isDone && (
+                          <button
+                            type="button"
+                            onClick={() => setOpenSummaries((p) => ({ ...p, [b.id]: !p[b.id] }))}
+                            className="text-sm text-gray-700 flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 w-fit"
+                          >
+                            Összesítés
+                            <span className={`transition-transform ${isOpen ? "rotate-180" : ""}`}>▾</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {isDone && isOpen && (
+                        <div className="sm:col-span-2 w-full min-w-0">
+                          <div className="rounded-xl border bg-gray-50 p-4 text-sm text-gray-700 space-y-2 w-full">
+                            {hasWorkText && (
+                              <div>
+                                <span className="font-medium">Munka / szolgáltatások:</span>
+                                <div className="whitespace-pre-wrap text-gray-700 mt-1">
+                                  {String(b.description ?? "").trim() ? String(b.description) : String(b.service_names ?? "")}
+                                </div>
+                              </div>
+                            )}
+
+                            {hasHours && (
+                              <div>
+                                <span className="font-medium">Munkaóra:</span>{" "}
+                                {b.hours != null ? b.hours : b.service_total_hours} óra
+                              </div>
+                            )}
+
+                            {hasCost && (
+                              <div>
+                                <span className="font-medium">Ár:</span>{" "}
+                                {(b.cost != null ? b.cost : b.service_total_price)?.toLocaleString("hu-HU")} Ft
+                              </div>
+                            )}
+
+                            {doneNote && (
+                              <div>
+                                <span className="font-medium">Megjegyzés (szerviz):</span>{" "}
+                                <span className="whitespace-pre-wrap">{doneNote}</span>
+                              </div>
+                            )}
+
+                            {!hasWorkText && !hasHours && !hasCost && !doneNote && (
+                              <div className="text-gray-500">Nincs megjeleníthető összesítő adat.</div>
+                            )}
+                          </div>
+                        </div>
                       )}
                     </div>
-
-                    <div className="mt-3 sm:mt-0 flex items-center gap-4">
-                      <span
-                        className={`px-3 py-1 rounded-full text-sm font-medium ${
-                          isActiveStatus(b.status)
-                            ? "bg-blue-100 text-blue-800"
-                            : "bg-green-100 text-green-800"
-                        }`}
-                      >
-                        {b.status}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
@@ -455,7 +615,7 @@ export default function Dashboard() {
                   ): { label: string; cls: string } => {
                     switch (type) {
                       case "status":
-                        return { label: "Állapotfrissítés", cls: "bg-blue-100 text-blue-800" };
+                        return { label: "Állapotváltozás", cls: "bg-blue-100 text-blue-800" };
                       case "reminder":
                         return { label: "Emlékeztető", cls: "bg-yellow-100 text-yellow-800" };
                       case "thanks":
@@ -484,7 +644,7 @@ export default function Dashboard() {
                           </p>
 
                           <p className="text-sm text-gray-500">
-                            {new Date(n.date).toLocaleString("hu-HU")}
+                            {formatNotificationHu(n.date)}
                           </p>
                         </div>
 
@@ -549,6 +709,7 @@ export default function Dashboard() {
               <h2 className="text-2xl font-semibold mb-4">Státusz megtekintése</h2>
               <p className="text-xl font-medium">{statusModalCar.license_plate}</p>
               <p className="text-gray-700">{statusModalCar.type}</p>
+              <p className="text-sm text-gray-500">Márka csoport: {brandGroupLabel(statusModalCar.brand_group)}</p>
               <div className="mt-6">
                 <p className="text-lg font-semibold">Aktuális státusz:</p>
                 <p className="text-xl mt-2">{statusModalCar.status || "Nincs megadva státusz"}</p>
@@ -583,6 +744,19 @@ export default function Dashboard() {
                     value={editType}
                     onChange={(e) => setEditType(e.target.value)}
                   />
+                </div>
+
+                <div>
+                  <label className="block mb-1 text-gray-700">Márka csoport</label>
+                  <select
+                    className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-black"
+                    value={editBrandGroup}
+                    onChange={(e) => setEditBrandGroup(e.target.value)}
+                  >
+                    <option value="atlagos">Átlagos</option>
+                    <option value="nemet">Német (drágább)</option>
+                    <option value="olcso">Dacia / Suzuki (olcsóbb)</option>
+                  </select>
                 </div>
 
                 {editMessage && (

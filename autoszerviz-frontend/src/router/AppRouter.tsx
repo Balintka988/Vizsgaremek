@@ -13,6 +13,7 @@ import Contact from "../pages/Contact";
 import Terms from "../pages/Terms";
 import Privacy from "../pages/Privacy";
 import AdminDashboard from "../pages/AdminDashboard";
+import AdminServices from "../pages/AdminServices";
 
 const router = createBrowserRouter(
   createRoutesFromElements(
@@ -31,6 +32,7 @@ const router = createBrowserRouter(
       <Route path="/cars/:id/edit" element={<EditCar />} />
       <Route path="/cars/:id/status" element={<CarStatus />} />
       <Route path="/admin" element={<AdminDashboard />} />
+      <Route path="/admin/services" element={<AdminServices />} />
 </>
   )
 );

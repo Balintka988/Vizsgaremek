@@ -6,7 +6,9 @@ import logo from "../assets/logo-nobg.png";
 export default function Navbar() {
   const { token, user, logout } = useContext(AuthContext);
   const navigate = useNavigate();
-  const firstName = user?.role === "admin" ? "Admin" : user?.name?.split(" ")[0] ?? "";
+  const firstName = user?.role === "admin"
+    ? "Admin"
+    : String(user?.name ?? "").trim().split(/\s+/).filter(Boolean).at(-1) ?? "";
   const [menuOpen, setMenuOpen] = useState(false);
   const toggleMenu = () => setMenuOpen((prev) => !prev);
   const [mobileOpen, setMobileOpen] = useState(false);

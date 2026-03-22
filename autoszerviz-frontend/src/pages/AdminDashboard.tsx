@@ -1,4 +1,5 @@
 import { useState, useEffect, useContext, useMemo } from "react";
+import type { FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
@@ -26,10 +27,11 @@ interface BookingWithDetails {
   cost?: number;
   description?: string;
   noteToClient?: string;
-  service_id?: number;
-  service_name?: string;
-  service_work_hours?: number;
-  service_price?: number;
+  note_to_client?: string;
+  service_names?: string;
+  service_description?: string;
+  service_total_hours?: number;
+  service_total_price?: number;
 }
 
 interface CarWithOwner {
@@ -37,6 +39,7 @@ interface CarWithOwner {
   owner_id: number;
   license_plate: string;
   type: string;
+  brand_group?: string;
   status: string;
   user_name: string;
   user_phone: string;
@@ -56,15 +59,20 @@ interface Service {
   work_hours?: number;
 }
 
+type SortDir = "asc" | "desc";
+type BookingSortKey = "user" | "plate" | "type" | "date" | "status" | "work";
+type CarSortKey = "user" | "plate" | "type" | "group" | "status";
+type ServiceSortKey = "name" | "price" | "work_hours";
+
 export default function AdminDashboard() {
   const { token, user, ready } = useContext(AuthContext);
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [selectedTab, setSelectedTab] = useState<"bookings" | "cars" | "notifications">(() => {
+  const [selectedTab, setSelectedTab] = useState<"bookings" | "cars" | "services" | "notifications">(() => {
     const params = new URLSearchParams(location.search);
     const tab = params.get("tab");
-    if (tab === "cars" || tab === "notifications" || tab === "bookings") return tab;
+    if (tab === "cars" || tab === "services" || tab === "notifications" || tab === "bookings") return tab;
     return "bookings";
   });
 
@@ -85,19 +93,145 @@ export default function AdminDashboard() {
 
   const [editCarLicense, setEditCarLicense] = useState("");
   const [editCarType, setEditCarType] = useState("");
-  const [editCarStatus, setEditCarStatus] = useState("");
+  const [editCarBrandGroup, setEditCarBrandGroup] = useState<string>("atlagos");
 
   const [notificationUsers, setNotificationUsers] = useState<number[]>([]);
+  const [notificationCarId, setNotificationCarId] = useState<number | "">("");
   const [notificationType, setNotificationType] = useState<string>("");
   const [notificationMessage, setNotificationMessage] = useState("");
-  const [notifFeedback, setNotifFeedback] = useState<string | null>(null);
-  const [updateFeedback, setUpdateFeedback] = useState<string | null>(null);
+
+  const [notifError, setNotifError] = useState<string | null>(null);
+  const [notifSuccess, setNotifSuccess] = useState<string | null>(null);
+
+  const [updateError, setUpdateError] = useState<string | null>(null);
+  const [updateSuccess, setUpdateSuccess] = useState<string | null>(null);
+
+  const [serviceSearch, setServiceSearch] = useState<string>("");
+  const [serviceModal, setServiceModal] = useState<Service | null>(null);
+  const [serviceName, setServiceName] = useState<string>("");
+  const [servicePrice, setServicePrice] = useState<string>("");
+  const [serviceWorkHours, setServiceWorkHours] = useState<string>("");
+
+  const [serviceError, setServiceError] = useState<string | null>(null);
+  const [serviceSuccess, setServiceSuccess] = useState<string | null>(null);
 
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [bookingSearch, setBookingSearch] = useState<string>("");
+  const [bookingSearchField, setBookingSearchField] = useState<
+    "all" | "user" | "plate" | "type" | "date" | "status" | "work"
+  >("all");
+
+  const [carSearch, setCarSearch] = useState<string>("");
+  const [carSearchField, setCarSearchField] = useState<
+    "all" | "user" | "plate" | "type" | "group" | "status"
+  >("all");
+  const [showCompletedBookings, setShowCompletedBookings] = useState<boolean>(false);
+
+  const [serviceSearchField, setServiceSearchField] = useState<
+    "all" | "name" | "price" | "work_hours"
+  >("all");
+
+  const [bookingSort, setBookingSort] = useState<{ key: BookingSortKey | null; dir: SortDir }>({
+    key: null,
+    dir: "asc",
+  });
+
+  const [carSort, setCarSort] = useState<{ key: CarSortKey | null; dir: SortDir }>({
+    key: null,
+    dir: "asc",
+  });
+
+  const [serviceSort, setServiceSort] = useState<{ key: ServiceSortKey | null; dir: SortDir }>({
+    key: null,
+    dir: "asc",
+  });
+
+  const sortArrow = (active: boolean, dir: SortDir) => (active ? (dir === "asc" ? " ▲" : " ▼") : "");
+
+  const isCompletedStatus = (statusRaw: string) => {
+    const s = String(statusRaw ?? "").trim().toLowerCase();
+    return s === "kész" || s === "kesz" || s.includes("kész") || s.includes("kesz");
+  };
+
+  const isInProgressStatus = (statusRaw: string) => {
+    const s = String(statusRaw ?? "").trim().toLowerCase();
+    return s === "folyamatban";
+  };
+
+  const statusBadgeClasses = (statusRaw: string) => {
+    const status = String(statusRaw || "").trim();
+    if (!status || status === "Nincs státusz") return "bg-gray-100 text-gray-700";
+    if (isCompletedStatus(status)) return "bg-green-100 text-green-800";
+    return "bg-blue-100 text-blue-800";
+  };
+
+  const brandGroupLabel = (raw: unknown) => {
+    const v = String(raw ?? "atlagos").trim().toLowerCase();
+    if (v === "atlagos") return "Átlagos";
+    if (v === "nemet") return "Német";
+    if (v === "olcso") return "Olcsó";
+    return v;
+  };
+
+const toggleSort = <K extends string>(
+  prev: { key: K | null; dir: SortDir },
+  key: K
+): { key: K; dir: SortDir } => {
+  if (prev.key === key) {
+    return { key, dir: prev.dir === "asc" ? "desc" : "asc" };
+  }
+  return { key, dir: "asc" };
+};
+
+  const toggleBookingSort = (key: BookingSortKey) => setBookingSort((prev) => toggleSort(prev, key));
+  const toggleCarSort = (key: CarSortKey) => setCarSort((prev) => toggleSort(prev, key));
+  const toggleServiceSort = (key: ServiceSortKey) => setServiceSort((prev) => toggleSort(prev, key));
+
+  const normalizeNumOrNull = (v: unknown) => {
+    const s = String(v ?? "").trim();
+    if (!s) return null;
+    const n = Number(s.replace(",", "."));
+    return isNaN(n) ? null : n;
+  };
+
+  const normalizePositiveNumOrThrow = (raw: string, label: string) => {
+    const n = Number(String(raw ?? "").trim().replace(",", "."));
+    if (!Number.isFinite(n) || n < 0) throw new Error(`Hibás ${label}`);
+    return n;
+  };
+
+  const isSameDay = (dateStr: string, compareDate: Date) => {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return false;
+
+    return (
+      d.getFullYear() === compareDate.getFullYear() &&
+      d.getMonth() === compareDate.getMonth() &&
+      d.getDate() === compareDate.getDate()
+    );
+  };
+
+  const isThisWeek = (dateStr: string) => {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return false;
+
+    const now = new Date();
+    const day = now.getDay();
+    const diffToMonday = day === 0 ? 6 : day - 1;
+
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(now.getDate() - diffToMonday);
+
+    const end = new Date(start);
+    end.setDate(start.getDate() + 7);
+
+    return d >= start && d < end;
+  };
 
   const loadData = async () => {
     if (!token) return;
+
     try {
       const [bookingData, carData, usersData] = await Promise.all([
         apiGet("/bookings", token),
@@ -116,8 +250,8 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => {
-    loadData();
     if (!token) return;
+    loadData();
 
     const onFocus = () => loadData();
     window.addEventListener("focus", onFocus);
@@ -139,17 +273,27 @@ export default function AdminDashboard() {
         const data = await apiGet("/services", token);
         if (Array.isArray(data)) setServices(data as Service[]);
       } catch (err) {
-        console.error("Nem sikerÃ¼lt lekÃ©rni a szolgÃ¡ltatÃ¡sokat:", err);
+        console.error("Nem sikerült lekérni a szolgáltatásokat:", err);
       }
     };
     loadServices();
   }, [token]);
 
+  const reloadServices = async () => {
+    if (!token) return;
+    try {
+      const data = await apiGet("/services", token);
+      if (Array.isArray(data)) setServices(data as Service[]);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
     if (!ready) return;
     if (!token || !user) {
       navigate("/login");
-    } else if ((user as any).role !== "admin") {
+    } else if (user.role !== "admin") {
       navigate("/dashboard");
     }
   }, [token, user, ready, navigate]);
@@ -157,34 +301,144 @@ export default function AdminDashboard() {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const tab = params.get("tab");
-    if (tab === "cars" || tab === "notifications" || tab === "bookings") {
+    if (tab === "cars" || tab === "services" || tab === "notifications" || tab === "bookings") {
       setSelectedTab(tab);
     }
   }, [location.search]);
 
-  const normalizeNumOrNull = (v: any) => {
-    const s = String(v ?? "").trim();
-    if (!s) return null;
-    const n = Number(s.replace(",", "."));
-    return isNaN(n) ? null : n;
+  const filteredServices = useMemo(() => {
+    const term = serviceSearch.trim().toLowerCase();
+    const list = Array.isArray(services) ? services : [];
+
+    const filtered = !term
+      ? list.slice()
+      : list.filter((s) => {
+          const name = String(s.name ?? "").toLowerCase();
+          const price = String(s.price ?? "").toLowerCase();
+          const wh = String(s.work_hours ?? "").toLowerCase();
+
+          if (serviceSearchField === "name") return name.includes(term);
+          if (serviceSearchField === "price") return price.includes(term);
+          if (serviceSearchField === "work_hours") return wh.includes(term);
+          return name.includes(term) || price.includes(term) || wh.includes(term);
+        });
+
+    const dirMul = serviceSort.dir === "asc" ? 1 : -1;
+
+    if (!serviceSort.key) {
+      return filtered.sort((a, b) =>
+        String(a.name ?? "").localeCompare(String(b.name ?? ""), "hu", { sensitivity: "base" })
+      );
+    }
+
+    return filtered.sort((a, b) => {
+      let c = 0;
+
+      if (serviceSort.key === "name") {
+        c = String(a.name ?? "").localeCompare(String(b.name ?? ""), "hu", { sensitivity: "base" });
+      } else if (serviceSort.key === "price") {
+        c = Number(a.price ?? 0) - Number(b.price ?? 0);
+      } else if (serviceSort.key === "work_hours") {
+        c = Number(a.work_hours ?? 0) - Number(b.work_hours ?? 0);
+      }
+
+      if (c !== 0) return c * dirMul;
+      return String(a.name ?? "").localeCompare(String(b.name ?? ""), "hu", { sensitivity: "base" });
+    });
+  }, [services, serviceSearch, serviceSearchField, serviceSort.key, serviceSort.dir]);
+
+  const openServiceModal = (service?: Service) => {
+    if (service) {
+      setServiceModal(service);
+      setServiceName(service.name ?? "");
+      setServicePrice(service.price != null ? String(service.price) : "");
+      setServiceWorkHours(service.work_hours != null ? String(service.work_hours) : "");
+    } else {
+      setServiceModal({ id: 0, name: "", price: 0, work_hours: 0 });
+      setServiceName("");
+      setServicePrice("");
+      setServiceWorkHours("");
+    }
+
+    setServiceError(null);
+    setServiceSuccess(null);
+  };
+
+  const closeServiceModal = () => {
+    setServiceModal(null);
+    setServiceError(null);
+    setServiceSuccess(null);
+  };
+
+  const saveService = async () => {
+    if (!token || !serviceModal) return;
+
+    try {
+      setServiceError(null);
+      setServiceSuccess(null);
+
+      const nm = serviceName.trim();
+      if (!nm) throw new Error("A név kötelező");
+
+      const p = normalizePositiveNumOrThrow(servicePrice, "ár");
+      const wh = normalizePositiveNumOrThrow(serviceWorkHours, "munkaóra");
+
+      if (serviceModal.id && serviceModal.id !== 0) {
+        await apiPut(`/services/${serviceModal.id}`, { name: nm, price: p, work_hours: wh }, token);
+        setServiceSuccess("Szolgáltatás frissítve");
+      } else {
+        await apiPost("/services", { name: nm, price: p, work_hours: wh }, token);
+        setServiceSuccess("Szolgáltatás hozzáadva");
+      }
+
+      await reloadServices();
+      setTimeout(() => closeServiceModal(), 900);
+    } catch (err) {
+      console.error(err);
+      setServiceError(err instanceof Error ? err.message : "Hiba a mentés során");
+    }
+  };
+
+  const deleteService = async (service: Service) => {
+    if (!token) return;
+
+    const ok = window.confirm(`Biztosan törlöd ezt a szolgáltatást? (${service.name})`);
+    if (!ok) return;
+
+    try {
+      setServiceError(null);
+      setServiceSuccess(null);
+
+      await apiDelete(`/services/${service.id}`, token);
+      await reloadServices();
+      setServiceSuccess("Szolgáltatás törölve");
+      setTimeout(() => setServiceSuccess(null), 2000);
+    } catch (err) {
+      console.error(err);
+      setServiceError("Nem sikerült törölni a szolgáltatást.");
+      setTimeout(() => setServiceError(null), 2000);
+    }
   };
 
   const todayCount = useMemo(() => {
-    const todayLabel = new Date().toLocaleDateString("hu-HU");
-    return bookings.filter((b) => String(formatBookingHu(b.date)).includes(todayLabel)).length;
+    const today = new Date();
+    return bookings.filter((b) => isSameDay(b.date, today)).length;
   }, [bookings]);
 
   const inProgressCount = useMemo(() => {
-    return bookings.filter((b) => String(b.status ?? "") !== "Kész").length;
+    return bookings.filter((b) => isInProgressStatus(b.status)).length;
   }, [bookings]);
 
   const weeklyRevenue = useMemo(() => {
     let sum = 0;
     bookings.forEach((b) => {
+      if (!isCompletedStatus(b.status)) return;
+      if (!isThisWeek(b.date)) return;
+
       const rawCost =
         b.cost !== undefined && b.cost !== null && String(b.cost).trim() !== ""
           ? b.cost
-          : b.service_price ?? null;
+          : b.service_total_price ?? null;
 
       if (rawCost !== null && rawCost !== undefined && String(rawCost).trim() !== "") {
         const val = Number(String(rawCost).replace(",", "."));
@@ -195,12 +449,13 @@ export default function AdminDashboard() {
   }, [bookings]);
 
   const getWorkCount = (b: BookingWithDetails) => {
-    if (b.hours) {
+    if (b.hours !== undefined && b.hours !== null) {
       const hrs = Number(b.hours);
       if (!isNaN(hrs)) return Math.round(hrs);
     }
-    if (!b.hours && b.service_work_hours !== undefined && b.service_work_hours !== null) {
-      const sh = Number(b.service_work_hours);
+
+    if ((b.hours === undefined || b.hours === null) && b.service_total_hours !== undefined && b.service_total_hours !== null) {
+      const sh = Number(b.service_total_hours);
       if (!isNaN(sh)) return Math.round(sh);
     }
     if (b.description) {
@@ -213,30 +468,134 @@ export default function AdminDashboard() {
     return 0;
   };
 
-  const handleTabClick = (tab: "bookings" | "cars" | "notifications") => {
+  const handleTabClick = (tab: "bookings" | "cars" | "services" | "notifications") => {
     setSelectedTab(tab);
     navigate(`/admin?tab=${tab}`);
   };
 
+  const bookingFieldLabel = (f: typeof bookingSearchField) => {
+    switch (f) {
+      case "user":
+        return "Ügyfél";
+      case "plate":
+        return "Rendszám";
+      case "type":
+        return "Típus";
+      case "date":
+        return "Dátum";
+      case "status":
+        return "Státusz";
+      case "work":
+        return "Munka";
+      default:
+        return "Bármi";
+    }
+  };
+
+  const carFieldLabel = (f: typeof carSearchField) => {
+    switch (f) {
+      case "user":
+        return "Ügyfél";
+      case "plate":
+        return "Rendszám";
+      case "type":
+        return "Típus";
+      case "group":
+        return "Csoport";
+      case "status":
+        return "Státusz";
+      default:
+        return "Bármi";
+    }
+  };
+
+  const serviceFieldLabel = (f: typeof serviceSearchField) => {
+    switch (f) {
+      case "name":
+        return "Név";
+      case "price":
+        return "Ár";
+      case "work_hours":
+        return "Munkaóra";
+      default:
+        return "Bármi";
+    }
+  };
+
+  const quickFilterBooking = (field: typeof bookingSearchField, value: string) => {
+    setBookingSearchField(field);
+    setBookingSearch(value);
+  };
+
+  const quickFilterCar = (field: typeof carSearchField, value: string) => {
+    setCarSearchField(field);
+    setCarSearch(value);
+  };
+
+  const quickFilterService = (field: typeof serviceSearchField, value: string) => {
+    setServiceSearchField(field);
+    setServiceSearch(value);
+  };
+
   const filteredBookings = useMemo(() => {
-    return bookings
-      .filter((b) => {
-        if (!bookingSearch.trim()) return true;
-        const term = bookingSearch.toLowerCase();
-        return (
-          (b.user_name && b.user_name.toLowerCase().includes(term)) ||
-          (b.license_plate && b.license_plate.toLowerCase().includes(term)) ||
-          (b.car_type && b.car_type.toLowerCase().includes(term)) ||
-          (b.status && b.status.toLowerCase().includes(term))
-        );
-      })
-      .sort((a, b) => {
-        const aDone = String(a.status ?? "") === "Kész";
-        const bDone = String(b.status ?? "") === "Kész";
+    const list = bookings.filter((b) => {
+      if (!showCompletedBookings && isCompletedStatus(b.status)) return false;
+
+      const raw = bookingSearch.trim();
+      if (!raw) return true;
+      const term = raw.toLowerCase();
+
+      const userName = String(b.user_name ?? "").toLowerCase();
+      const plate = String(b.license_plate ?? "").toLowerCase();
+      const type = String(b.car_type ?? "").toLowerCase();
+      const status = String(b.status ?? "").toLowerCase();
+      const date = String(formatBookingHu(b.date) ?? "").toLowerCase();
+      const work = String(getWorkCount(b) ?? "").toLowerCase();
+
+      if (bookingSearchField === "user") return userName.includes(term);
+      if (bookingSearchField === "plate") return plate.includes(term);
+      if (bookingSearchField === "type") return type.includes(term);
+      if (bookingSearchField === "date") return date.includes(term);
+      if (bookingSearchField === "status") return status.includes(term);
+      if (bookingSearchField === "work") return work.includes(term);
+
+      return (
+        userName.includes(term) ||
+        plate.includes(term) ||
+        type.includes(term) ||
+        date.includes(term) ||
+        status.includes(term) ||
+        work.includes(term)
+      );
+    });
+
+    const dirMul = bookingSort.dir === "asc" ? 1 : -1;
+    const getStr = (v: unknown) => String(v ?? "");
+    const cmpStr = (a: string, b: string) => a.localeCompare(b, "hu", { sensitivity: "base" });
+
+    if (!bookingSort.key) {
+      return list.sort((a, b) => {
+        const aDone = isCompletedStatus(a.status);
+        const bDone = isCompletedStatus(b.status);
         if (aDone !== bDone) return aDone ? 1 : -1;
         return String(a.date ?? "").localeCompare(String(b.date ?? ""));
       });
-  }, [bookings, bookingSearch]);
+    }
+
+    return list.sort((a, b) => {
+      let c = 0;
+
+      if (bookingSort.key === "user") c = cmpStr(getStr(a.user_name), getStr(b.user_name));
+      else if (bookingSort.key === "plate") c = cmpStr(getStr(a.license_plate), getStr(b.license_plate));
+      else if (bookingSort.key === "type") c = cmpStr(getStr(a.car_type), getStr(b.car_type));
+      else if (bookingSort.key === "status") c = cmpStr(getStr(a.status), getStr(b.status));
+      else if (bookingSort.key === "date") c = String(a.date ?? "").localeCompare(String(b.date ?? ""));
+      else if (bookingSort.key === "work") c = getWorkCount(a) - getWorkCount(b);
+
+      if (c !== 0) return c * dirMul;
+      return String(a.date ?? "").localeCompare(String(b.date ?? ""));
+    });
+  }, [bookings, bookingSearch, bookingSearchField, bookingSort.key, bookingSort.dir, showCompletedBookings]);
 
   const openBookingModal = (booking: BookingWithDetails) => {
     setBookingModal(booking);
@@ -244,32 +603,92 @@ export default function AdminDashboard() {
     setEditHours(booking.hours != null ? String(booking.hours) : "");
     setEditCost(booking.cost != null ? String(booking.cost) : "");
     setEditDescription(booking.description || "");
-    setEditNoteToClient(booking.noteToClient || "");
-    setUpdateFeedback(null);
+    setEditNoteToClient(String(booking.noteToClient ?? booking.note_to_client ?? ""));
+    setUpdateError(null);
+    setUpdateSuccess(null);
 
-    const serviceId = (booking as any).service_id;
-    if (serviceId && !booking.hours && !booking.cost && !booking.description) {
-      const svc = services.find((s) => s.id === serviceId);
-      if (svc) {
-        setEditCost(String(svc.price));
-        if (svc.work_hours !== undefined && svc.work_hours !== null) {
-          setEditHours(String(svc.work_hours));
-        }
-        setEditDescription(svc.name);
+    if (
+      booking.hours == null &&
+      booking.cost == null &&
+      !String(booking.description ?? "").trim()
+    ) {
+      if (booking.service_total_price !== undefined && booking.service_total_price !== null) {
+        setEditCost(String(booking.service_total_price));
+      }
+      if (booking.service_total_hours !== undefined && booking.service_total_hours !== null) {
+        setEditHours(String(booking.service_total_hours));
+      }
+      if (booking.service_description) {
+        setEditDescription(String(booking.service_description));
+      } else if (booking.service_names) {
+        setEditDescription(String(booking.service_names).split(", ").join("\n"));
       }
     }
   };
 
+  const filteredCars = useMemo(() => {
+    const list = cars.filter((c) => {
+      const raw = carSearch.trim();
+      if (!raw) return true;
+      const term = raw.toLowerCase();
+
+      const userName = String(c.user_name ?? "").toLowerCase();
+      const plate = String(c.license_plate ?? "").toLowerCase();
+      const type = String(c.type ?? "").toLowerCase();
+      const groupRaw = String(c.brand_group ?? "atlagos").toLowerCase();
+      const groupLabel = brandGroupLabel(c.brand_group).toLowerCase();
+      const status = String(c.status ?? "").toLowerCase();
+
+      if (carSearchField === "user") return userName.includes(term);
+      if (carSearchField === "plate") return plate.includes(term);
+      if (carSearchField === "type") return type.includes(term);
+      if (carSearchField === "group") return groupRaw.includes(term) || groupLabel.includes(term);
+      if (carSearchField === "status") return status.includes(term);
+
+      return (
+        userName.includes(term) ||
+        plate.includes(term) ||
+        type.includes(term) ||
+        groupRaw.includes(term) ||
+        groupLabel.includes(term) ||
+        status.includes(term)
+      );
+    });
+
+    const dirMul = carSort.dir === "asc" ? 1 : -1;
+    const cmpStr = (a: string, b: string) => a.localeCompare(b, "hu", { sensitivity: "base" });
+
+    if (!carSort.key) {
+      return list.sort((a, b) => cmpStr(String(a.license_plate ?? ""), String(b.license_plate ?? "")));
+    }
+
+    return list.sort((a, b) => {
+      let c = 0;
+      if (carSort.key === "user") c = cmpStr(String(a.user_name ?? ""), String(b.user_name ?? ""));
+      else if (carSort.key === "plate") c = cmpStr(String(a.license_plate ?? ""), String(b.license_plate ?? ""));
+      else if (carSort.key === "type") c = cmpStr(String(a.type ?? ""), String(b.type ?? ""));
+      else if (carSort.key === "group") c = cmpStr(brandGroupLabel(a.brand_group), brandGroupLabel(b.brand_group));
+      else if (carSort.key === "status") c = cmpStr(String(a.status ?? ""), String(b.status ?? ""));
+
+      if (c !== 0) return c * dirMul;
+      return cmpStr(String(a.license_plate ?? ""), String(b.license_plate ?? ""));
+    });
+  }, [cars, carSearch, carSearchField, carSort.key, carSort.dir]);
+
   const closeBookingModal = () => {
     setBookingModal(null);
     setStatusUpdate("");
+    setUpdateError(null);
+    setUpdateSuccess(null);
   };
 
   const saveBookingChanges = async () => {
-    if (!bookingModal) return;
-
+    if (!bookingModal || !token) return;
 
     try {
+      setUpdateError(null);
+      setUpdateSuccess(null);
+
       await apiPut(
         `/bookings/${bookingModal.id}`,
         {
@@ -305,19 +724,20 @@ export default function AdminDashboard() {
         )
       );
 
-      setUpdateFeedback("Sikeresen frissítve");
+      setUpdateSuccess("Sikeresen frissítve");
       setTimeout(() => closeBookingModal(), 1200);
     } catch (err) {
       console.error(err);
-      setUpdateFeedback((err as any)?.message || "Hiba a frissítés során");
+      setUpdateError(err instanceof Error ? err.message : "Hiba a frissítés során");
     }
   };
 
   const deleteCompletedBooking = async (booking: BookingWithDetails) => {
     if (!token) return;
-    if (String(booking.status ?? "") !== "Kész") {
-      setUpdateFeedback("Csak a kész foglalások törölhetők.");
-      setTimeout(() => setUpdateFeedback(null), 2000);
+
+    if (!isCompletedStatus(booking.status)) {
+      setUpdateError("Csak a kész foglalások törölhetők.");
+      setTimeout(() => setUpdateError(null), 2000);
       return;
     }
     const ok = window.confirm(`Biztosan törlöd ezt a kész foglalást? (#${booking.id} - ${booking.license_plate})`);
@@ -328,8 +748,8 @@ export default function AdminDashboard() {
       await loadData();
     } catch (err) {
       console.error(err);
-      setUpdateFeedback("Nem sikerült törölni a foglalást.");
-      setTimeout(() => setUpdateFeedback(null), 2000);
+      setUpdateError("Nem sikerült törölni a foglalást.");
+      setTimeout(() => setUpdateError(null), 2000);
     }
   };
 
@@ -337,55 +757,82 @@ export default function AdminDashboard() {
     setCarModal(car);
     setEditCarLicense(car.license_plate);
     setEditCarType(car.type);
-    setEditCarStatus(car.status || "Nincs státusz");
-    setUpdateFeedback(null);
+    setEditCarBrandGroup(String(car.brand_group ?? "atlagos"));
+    setUpdateError(null);
+    setUpdateSuccess(null);
   };
 
-  const closeCarModal = () => setCarModal(null);
+  const closeCarModal = () => {
+    setCarModal(null);
+    setUpdateError(null);
+    setUpdateSuccess(null);
+  };
 
   const saveCarChanges = async () => {
-    if (!carModal) return;
+    if (!carModal || !token) return;
+
     try {
+      setUpdateError(null);
+      setUpdateSuccess(null);
+
       await apiPut(
         `/cars/${carModal.id}`,
-        { license_plate: editCarLicense, type: editCarType, status: editCarStatus },
+        { license_plate: editCarLicense, type: editCarType, brand_group: editCarBrandGroup },
         token
       );
+
       setCars((prev) =>
         prev.map((c) =>
           c.id === carModal.id
-            ? { ...c, license_plate: editCarLicense, type: editCarType, status: editCarStatus }
+            ? { ...c, license_plate: editCarLicense, type: editCarType, brand_group: editCarBrandGroup }
             : c
         )
       );
-      setUpdateFeedback("Sikeresen frissítve");
+
+      setUpdateSuccess("Sikeresen frissítve");
       setTimeout(() => closeCarModal(), 1200);
     } catch (err) {
       console.error(err);
-      setUpdateFeedback("Hiba a frissítés során");
+      setUpdateError(err instanceof Error ? err.message : "Hiba a frissítés során");
     }
   };
 
-  const sendNotifications = async (e: React.FormEvent) => {
+  const sendNotifications = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    if (!token) return;
+
+    setNotifError(null);
+    setNotifSuccess(null);
+
     if (notificationUsers.length === 0 || !notificationType.trim() || !notificationMessage.trim()) {
-      setNotifFeedback("Válassza ki a címzetteket, adjon meg típust és üzenetet");
+      setNotifError("Válassza ki a címzetteket, adjon meg típust és üzenetet");
       return;
     }
+
+    const plateForMsg =
+      notificationCarId !== ""
+        ? String(cars.find((c) => c.id === Number(notificationCarId))?.license_plate ?? "").trim()
+        : "";
+
+    const finalMessage = plateForMsg ? `[${plateForMsg}] ${notificationMessage}` : notificationMessage;
+
     try {
       await apiPost(
         "/notifications",
-        { userIds: notificationUsers, type: notificationType, message: notificationMessage },
+        { userIds: notificationUsers, type: notificationType, message: finalMessage },
         token
       );
-      setNotifFeedback("Értesítés elküldve");
+
+      setNotifSuccess("Értesítés elküldve");
       setNotificationUsers([]);
+      setNotificationCarId("");
       setNotificationType("");
       setNotificationMessage("");
-      setTimeout(() => setNotifFeedback(null), 2000);
+      setTimeout(() => setNotifSuccess(null), 2000);
     } catch (err) {
       console.error(err);
-      setNotifFeedback("Hiba történt az értesítés küldésekor");
+      setNotifError("Hiba történt az értesítés küldésekor");
     }
   };
 
@@ -436,6 +883,14 @@ export default function AdminDashboard() {
             Autók kezelése
           </button>
           <button
+            onClick={() => handleTabClick("services")}
+            className={`flex-1 py-2 text-sm sm:text-base font-medium transition-colors ${
+              selectedTab === "services" ? "bg-white text-black" : "text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            Szolgáltatások
+          </button>
+          <button
             onClick={() => handleTabClick("notifications")}
             className={`flex-1 py-2 text-sm sm:text-base font-medium transition-colors ${
               selectedTab === "notifications" ? "bg-white text-black" : "text-gray-600 hover:bg-gray-50"
@@ -451,12 +906,21 @@ export default function AdminDashboard() {
           <>
             {selectedTab === "bookings" && (
               <>
-                <div className="flex justify-end mb-2">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-2">
+                  <label className="inline-flex items-center gap-2 text-sm text-gray-700 select-none">
+                    <input
+                      type="checkbox"
+                      checked={showCompletedBookings}
+                      onChange={(e) => setShowCompletedBookings(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    Kész státuszú foglalásokat is mutassa
+                  </label>
                   <input
                     type="text"
                     value={bookingSearch}
                     onChange={(e) => setBookingSearch(e.target.value)}
-                    placeholder="Keresés..."
+                    placeholder={`Keresés (${bookingFieldLabel(bookingSearchField)})...`}
                     className="border border-gray-300 rounded-lg px-3 py-1 w-64 focus:outline-none focus:ring-2 focus:ring-black"
                   />
                 </div>
@@ -465,12 +929,60 @@ export default function AdminDashboard() {
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-100">
                       <tr>
-                        <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Ügyfél</th>
-                        <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Rendszer</th>
-                        <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Típus</th>
-                        <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Dátum</th>
-                        <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Státusz</th>
-                        <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Munka</th>
+                        <th
+                          onClick={() => toggleBookingSort("user")}
+                          className={`px-4 py-2 text-left text-sm font-semibold text-gray-700 cursor-pointer select-none ${
+                            bookingSearchField === "user" ? "underline" : ""
+                          }`}
+                          title="Rendezés: Ügyfél"
+                        >
+                          Ügyfél{sortArrow(bookingSort.key === "user", bookingSort.dir)}
+                        </th>
+                        <th
+                          onClick={() => toggleBookingSort("plate")}
+                          className={`px-4 py-2 text-left text-sm font-semibold text-gray-700 cursor-pointer select-none ${
+                            bookingSearchField === "plate" ? "underline" : ""
+                          }`}
+                          title="Rendezés: Rendszám"
+                        >
+                          Rendszám{sortArrow(bookingSort.key === "plate", bookingSort.dir)}
+                        </th>
+                        <th
+                          onClick={() => toggleBookingSort("type")}
+                          className={`px-4 py-2 text-left text-sm font-semibold text-gray-700 cursor-pointer select-none ${
+                            bookingSearchField === "type" ? "underline" : ""
+                          }`}
+                          title="Rendezés: Típus"
+                        >
+                          Típus{sortArrow(bookingSort.key === "type", bookingSort.dir)}
+                        </th>
+                        <th
+                          onClick={() => toggleBookingSort("date")}
+                          className={`px-4 py-2 text-left text-sm font-semibold text-gray-700 cursor-pointer select-none ${
+                            bookingSearchField === "date" ? "underline" : ""
+                          }`}
+                          title="Rendezés: Dátum"
+                        >
+                          Dátum{sortArrow(bookingSort.key === "date", bookingSort.dir)}
+                        </th>
+                        <th
+                          onClick={() => toggleBookingSort("status")}
+                          className={`px-4 py-2 text-left text-sm font-semibold text-gray-700 cursor-pointer select-none ${
+                            bookingSearchField === "status" ? "underline" : ""
+                          }`}
+                          title="Rendezés: Státusz"
+                        >
+                          Státusz{sortArrow(bookingSort.key === "status", bookingSort.dir)}
+                        </th>
+                        <th
+                          onClick={() => toggleBookingSort("work")}
+                          className={`px-4 py-2 text-left text-sm font-semibold text-gray-700 cursor-pointer select-none ${
+                            bookingSearchField === "work" ? "underline" : ""
+                          }`}
+                          title="Rendezés: Munka"
+                        >
+                          Munka{sortArrow(bookingSort.key === "work", bookingSort.dir)}
+                        </th>
                         <th className="px-4 py-2 text-sm font-semibold text-gray-700">Művelet</th>
                       </tr>
                     </thead>
@@ -478,25 +990,71 @@ export default function AdminDashboard() {
                       {filteredBookings.map((b) => (
                         <tr key={b.id} className="hover:bg-gray-50">
                           <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                            {b.user_name}
+                            <button
+                              type="button"
+                              className="text-left hover:underline"
+                              onClick={() => quickFilterBooking("user", String(b.user_name ?? ""))}
+                              title="Szűrés erre az ügyfélre"
+                            >
+                              {b.user_name}
+                            </button>
                             <div className="text-xs text-gray-500">{b.user_phone}</div>
                           </td>
-                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{b.license_plate}</td>
-                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{b.car_type}</td>
-                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{formatBookingHu(b.date)}</td>
+                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                            <button
+                              type="button"
+                              className="hover:underline"
+                              onClick={() => quickFilterBooking("plate", String(b.license_plate ?? ""))}
+                              title="Szűrés erre a rendszámra"
+                            >
+                              {b.license_plate}
+                            </button>
+                          </td>
+                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                            <button
+                              type="button"
+                              className="hover:underline"
+                              onClick={() => quickFilterBooking("type", String(b.car_type ?? ""))}
+                              title="Szűrés erre a típusra"
+                            >
+                              {b.car_type}
+                            </button>
+                          </td>
+                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                            <button
+                              type="button"
+                              className="hover:underline"
+                              onClick={() => quickFilterBooking("date", String(formatBookingHu(b.date) ?? ""))}
+                              title="Szűrés erre a dátumra"
+                            >
+                              {formatBookingHu(b.date)}
+                            </button>
+                          </td>
                           <td className="px-4 py-2 whitespace-nowrap text-sm">
                             <span
-                              className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                String(b.status ?? "") === "Kész"
-                                  ? "bg-green-100 text-green-800"
-                                  : "bg-blue-100 text-blue-800"
-                              }`}
+                              className={`px-2 py-1 rounded-full text-xs font-medium ${statusBadgeClasses(
+                                String(b.status ?? "")
+                              )}`}
                             >
-                              {b.status}
+                              <button
+                                type="button"
+                                className="hover:underline"
+                                onClick={() => quickFilterBooking("status", String(b.status ?? ""))}
+                                title="Szűrés erre a státuszra"
+                              >
+                                {b.status}
+                              </button>
                             </span>
                           </td>
                           <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-center">
-                            {getWorkCount(b)}
+                            <button
+                              type="button"
+                              className="hover:underline"
+                              onClick={() => quickFilterBooking("work", String(getWorkCount(b) ?? ""))}
+                              title="Szűrés erre a munkaszámra"
+                            >
+                              {getWorkCount(b)}
+                            </button>
                           </td>
                           <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 relative">
                             <button
@@ -519,6 +1077,7 @@ export default function AdminDashboard() {
                                 <button
                                   onClick={() => {
                                     setNotificationUsers([b.user_id]);
+                                    setNotificationCarId(b.car_id);
                                     setSelectedTab("notifications");
                                     navigate("/admin?tab=notifications");
                                     setOpenMenuId(null);
@@ -527,7 +1086,7 @@ export default function AdminDashboard() {
                                 >
                                   Értesítés küldése
                                 </button>
-                                {String(b.status ?? "") === "Kész" && (
+                                {isCompletedStatus(b.status) && (
                                   <button
                                     onClick={() => deleteCompletedBooking(b)}
                                     className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
@@ -547,48 +1106,151 @@ export default function AdminDashboard() {
             )}
 
             {selectedTab === "cars" && (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Ügyfél</th>
-                      <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Rendszám</th>
-                      <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Típus</th>
-                      <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Státusz</th>
-                      <th className="px-4 py-2 text-sm font-semibold text-gray-700">Művelet</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {cars.map((c) => (
-                      <tr key={c.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                          {c.user_name}
-                          <div className="text-xs text-gray-500">{c.user_phone}</div>
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{c.license_plate}</td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{c.type}</td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{c.status || "Nincs státusz"}</td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm">
-                          <button
-                            type="button"
-                            onClick={() => openCarModal(c)}
-                            className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded-md"
-                          >
-                            Kezelés
-                          </button>
-                        </td>
+              <>
+                <div className="flex justify-end mb-2">
+                  <input
+                    type="text"
+                    value={carSearch}
+                    onChange={(e) => setCarSearch(e.target.value)}
+                    placeholder={`Keresés (${carFieldLabel(carSearchField)})...`}
+                    className="border border-gray-300 rounded-lg px-3 py-1 w-64 focus:outline-none focus:ring-2 focus:ring-black"
+                  />
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th
+                          onClick={() => toggleCarSort("user")}
+                          className={`px-4 py-2 text-left text-sm font-semibold text-gray-700 cursor-pointer select-none ${
+                            carSearchField === "user" ? "underline" : ""
+                          }`}
+                          title="Rendezés: Ügyfél"
+                        >
+                          Ügyfél{sortArrow(carSort.key === "user", carSort.dir)}
+                        </th>
+                        <th
+                          onClick={() => toggleCarSort("plate")}
+                          className={`px-4 py-2 text-left text-sm font-semibold text-gray-700 cursor-pointer select-none ${
+                            carSearchField === "plate" ? "underline" : ""
+                          }`}
+                          title="Rendezés: Rendszám"
+                        >
+                          Rendszám{sortArrow(carSort.key === "plate", carSort.dir)}
+                        </th>
+                        <th
+                          onClick={() => toggleCarSort("type")}
+                          className={`px-4 py-2 text-left text-sm font-semibold text-gray-700 cursor-pointer select-none ${
+                            carSearchField === "type" ? "underline" : ""
+                          }`}
+                          title="Rendezés: Típus"
+                        >
+                          Típus{sortArrow(carSort.key === "type", carSort.dir)}
+                        </th>
+                        <th
+                          onClick={() => toggleCarSort("group")}
+                          className={`px-4 py-2 text-left text-sm font-semibold text-gray-700 cursor-pointer select-none ${
+                            carSearchField === "group" ? "underline" : ""
+                          }`}
+                          title="Rendezés: Csoport"
+                        >
+                          Csoport{sortArrow(carSort.key === "group", carSort.dir)}
+                        </th>
+                        <th
+                          onClick={() => toggleCarSort("status")}
+                          className={`px-4 py-2 text-left text-sm font-semibold text-gray-700 cursor-pointer select-none ${
+                            carSearchField === "status" ? "underline" : ""
+                          }`}
+                          title="Rendezés: Státusz"
+                        >
+                          Státusz{sortArrow(carSort.key === "status", carSort.dir)}
+                        </th>
+                        <th className="px-4 py-2 text-sm font-semibold text-gray-700">Művelet</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {filteredCars.map((c) => (
+                        <tr key={c.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                            <button
+                              type="button"
+                              className="text-left hover:underline"
+                              onClick={() => quickFilterCar("user", String(c.user_name ?? ""))}
+                              title="Szűrés erre az ügyfélre"
+                            >
+                              {c.user_name}
+                            </button>
+                            <div className="text-xs text-gray-500">{c.user_phone}</div>
+                          </td>
+                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                            <button
+                              type="button"
+                              className="hover:underline"
+                              onClick={() => quickFilterCar("plate", String(c.license_plate ?? ""))}
+                              title="Szűrés erre a rendszámra"
+                            >
+                              {c.license_plate}
+                            </button>
+                          </td>
+                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                            <button
+                              type="button"
+                              className="hover:underline"
+                              onClick={() => quickFilterCar("type", String(c.type ?? ""))}
+                              title="Szűrés erre a típusra"
+                            >
+                              {c.type}
+                            </button>
+                          </td>
+                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                            <button
+                              type="button"
+                              className="hover:underline"
+                              onClick={() => quickFilterCar("group", String(brandGroupLabel(c.brand_group) ?? ""))}
+                              title="Szűrés erre a csoportra"
+                            >
+                              {brandGroupLabel(c.brand_group)}
+                            </button>
+                          </td>
+                          <td className="px-4 py-2 whitespace-nowrap text-sm">
+                            <span
+                              className={`px-2 py-1 rounded-full text-xs font-medium ${statusBadgeClasses(
+                                String(c.status || "Nincs státusz")
+                              )}`}
+                            >
+                              <button
+                                type="button"
+                                className="hover:underline"
+                                onClick={() => quickFilterCar("status", String(c.status || "Nincs státusz"))}
+                                title="Szűrés erre a státuszra"
+                              >
+                                {c.status || "Nincs státusz"}
+                              </button>
+                            </span>
+                          </td>
+                          <td className="px-4 py-2 whitespace-nowrap text-sm">
+                            <button
+                              type="button"
+                              onClick={() => openCarModal(c)}
+                              className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded-md"
+                            >
+                              Kezelés
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
 
             {selectedTab === "notifications" && (
               <div className="bg-white p-6 rounded-xl shadow w-full max-w-none">
                 <h2 className="text-xl font-semibold mb-4">Értesítés küldése</h2>
-                <form onSubmit={sendNotifications} className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div className="lg:col-span-1">
+                <form onSubmit={sendNotifications} className="grid grid-cols-1 gap-4">
+                  <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Ügyfelek kiválasztása</label>
                     <div className="border rounded-lg px-4 py-2 max-h-40 overflow-y-auto space-y-1">
                       {users.map((u) => (
@@ -599,8 +1261,14 @@ export default function AdminDashboard() {
                               value={u.id}
                               checked={notificationUsers.includes(u.id)}
                               onChange={() => {
-                                if (notificationUsers.includes(u.id)) setNotificationUsers([]);
-                                else setNotificationUsers([u.id]);
+                                if (notificationUsers.includes(u.id)) {
+                                  setNotificationUsers([]);
+                                  setNotificationCarId("");
+                                } else {
+                                  setNotificationUsers([u.id]);
+                                  const firstCar = cars.find((c) => c.owner_id === u.id);
+                                  setNotificationCarId(firstCar ? firstCar.id : "");
+                                }
                               }}
                               className="form-checkbox h-4 w-4 text-black"
                             />
@@ -612,7 +1280,30 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
-                  <div className="lg:col-span-1">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Melyik autó miatt?</label>
+                    <select
+                      value={notificationCarId}
+                      onChange={(e) => setNotificationCarId(e.target.value === "" ? "" : Number(e.target.value))}
+                      disabled={notificationUsers.length === 0}
+                      className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-black disabled:bg-gray-100"
+                    >
+                      <option value="">(Nincs megadva)</option>
+                      {notificationUsers.length > 0 &&
+                        cars
+                          .filter((c) => c.owner_id === notificationUsers[0])
+                          .map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.license_plate} — {c.type}
+                            </option>
+                          ))}
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Ha választ autót, a rendszám automatikusan bekerül az üzenet elejére.
+                    </p>
+                  </div>
+
+                  <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Értesítés típusa</label>
                     <select
                       value={notificationType}
@@ -620,14 +1311,14 @@ export default function AdminDashboard() {
                       className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-black"
                     >
                       <option value="">Válasszon típust...</option>
-                      <option value="status">Állapotfrissítés</option>
+                      <option value="status">Állapotváltozás</option>
                       <option value="reminder">Emlékeztető</option>
                       <option value="thanks">Köszönő üzenet</option>
                       <option value="other">Egyéb</option>
                     </select>
                   </div>
 
-                  <div className="lg:col-span-2">
+                  <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Üzenet</label>
                     <textarea
                       value={notificationMessage}
@@ -637,12 +1328,140 @@ export default function AdminDashboard() {
                     />
                   </div>
 
-                  {notifFeedback && <p className="text-sm text-center text-red-600 lg:col-span-2">{notifFeedback}</p>}
+                  {notifError && <p className="text-sm text-center text-red-600">{notifError}</p>}
+                  {notifSuccess && <p className="text-sm text-center text-green-600">{notifSuccess}</p>}
 
-                  <button type="submit" className="w-full bg-black lg:col-span-2 text-white py-2 rounded-lg hover:bg-gray-800">
+                  <button type="submit" className="w-full bg-black text-white py-2 rounded-lg hover:bg-gray-800">
                     Küldés
                   </button>
                 </form>
+              </div>
+            )}
+
+            {selectedTab === "services" && (
+              <div className="bg-white p-6 rounded-xl shadow w-full max-w-none">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <h2 className="text-xl font-semibold">Szolgáltatások</h2>
+                  <button
+                    type="button"
+                    onClick={() => openServiceModal()}
+                    className="bg-black text-white px-4 py-2 rounded-lg hover:bg-gray-800"
+                  >
+                    + Új
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <input
+                    type="text"
+                    value={serviceSearch}
+                    onChange={(e) => setServiceSearch(e.target.value)}
+                    placeholder={`Keresés (${serviceFieldLabel(serviceSearchField)})...`}
+                    className="border border-gray-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-black"
+                  />
+                </div>
+
+                {serviceError && <p className="text-sm text-center text-red-600 mb-3">{serviceError}</p>}
+                {serviceSuccess && <p className="text-sm text-center text-green-600 mb-3">{serviceSuccess}</p>}
+
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="max-h-[520px] overflow-y-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50 sticky top-0 z-10">
+                        <tr>
+                          <th
+                            onClick={() => toggleServiceSort("name")}
+                            className={`px-4 py-2 text-left text-sm font-semibold text-gray-700 cursor-pointer select-none ${
+                              serviceSearchField === "name" ? "underline" : ""
+                            }`}
+                            title="Rendezés: Név"
+                          >
+                            Név{sortArrow(serviceSort.key === "name", serviceSort.dir)}
+                          </th>
+                          <th
+                            onClick={() => toggleServiceSort("price")}
+                            className={`px-4 py-2 text-left text-sm font-semibold text-gray-700 cursor-pointer select-none ${
+                              serviceSearchField === "price" ? "underline" : ""
+                            }`}
+                            title="Rendezés: Ár"
+                          >
+                            Ár{sortArrow(serviceSort.key === "price", serviceSort.dir)}
+                          </th>
+                          <th
+                            onClick={() => toggleServiceSort("work_hours")}
+                            className={`px-4 py-2 text-left text-sm font-semibold text-gray-700 cursor-pointer select-none ${
+                              serviceSearchField === "work_hours" ? "underline" : ""
+                            }`}
+                            title="Rendezés: Munkaóra"
+                          >
+                            Munkaóra{sortArrow(serviceSort.key === "work_hours", serviceSort.dir)}
+                          </th>
+                          <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">Művelet</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {filteredServices.length === 0 ? (
+                          <tr>
+                            <td className="px-4 py-3 text-sm text-gray-600" colSpan={4}>
+                              Nincs találat.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredServices.map((s) => (
+                            <tr key={s.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-2 text-sm text-gray-900">
+                                <button
+                                  type="button"
+                                  className="text-left hover:underline"
+                                  onClick={() => quickFilterService("name", String(s.name ?? ""))}
+                                  title="Szűrés erre a névre"
+                                >
+                                  {s.name}
+                                </button>
+                              </td>
+                              <td className="px-4 py-2 text-sm text-gray-900">
+                                <button
+                                  type="button"
+                                  className="hover:underline"
+                                  onClick={() => quickFilterService("price", String(s.price ?? ""))}
+                                  title="Szűrés erre az árra"
+                                >
+                                  {Number(s.price).toLocaleString("hu-HU")} Ft
+                                </button>
+                              </td>
+                              <td className="px-4 py-2 text-sm text-gray-900">
+                                <button
+                                  type="button"
+                                  className="hover:underline"
+                                  onClick={() => quickFilterService("work_hours", String(s.work_hours ?? ""))}
+                                  title="Szűrés erre a munkaórára"
+                                >
+                                  {Number(s.work_hours ?? 0).toLocaleString("hu-HU")}
+                                </button>
+                              </td>
+                              <td className="px-4 py-2 text-sm text-right whitespace-nowrap">
+                                <button
+                                  type="button"
+                                  onClick={() => openServiceModal(s)}
+                                  className="px-3 py-1 rounded-md border mr-2 hover:bg-gray-50"
+                                >
+                                  Szerkesztés
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => deleteService(s)}
+                                  className="px-3 py-1 rounded-md border text-red-600 hover:bg-red-50"
+                                >
+                                  Törlés
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
             )}
           </>
@@ -743,7 +1562,8 @@ export default function AdminDashboard() {
                   />
                 </div>
 
-                {updateFeedback && <p className="text-center text-sm text-red-600">{updateFeedback}</p>}
+                {updateError && <p className="text-center text-sm text-red-600">{updateError}</p>}
+                {updateSuccess && <p className="text-center text-sm text-green-600">{updateSuccess}</p>}
               </div>
 
               <div className="flex flex-col sm:flex-row justify-between gap-3">
@@ -764,6 +1584,79 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {serviceModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4 overflow-y-auto">
+            <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-lg relative">
+              <h2 className="text-2xl font-semibold mb-2">
+                {serviceModal.id && serviceModal.id !== 0 ? "Szolgáltatás szerkesztése" : "Új szolgáltatás"}
+              </h2>
+              <p className="text-sm text-gray-500 mb-4">
+                {serviceModal.id && serviceModal.id !== 0 ? `#${serviceModal.id}` : ""}
+              </p>
+
+              <div className="space-y-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Név</label>
+                  <input
+                    value={serviceName}
+                    onChange={(e) => setServiceName(e.target.value)}
+                    className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-black"
+                    placeholder="Pl. Olajcsere"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Ár (Ft)</label>
+                    <input
+                      value={servicePrice}
+                      onChange={(e) => setServicePrice(e.target.value)}
+                      className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-black"
+                      placeholder="12000"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Munkaóra</label>
+                    <input
+                      value={serviceWorkHours}
+                      onChange={(e) => setServiceWorkHours(e.target.value)}
+                      className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-black"
+                      placeholder="1.0"
+                    />
+                  </div>
+                </div>
+
+                {serviceError && <p className="text-center text-sm text-red-600">{serviceError}</p>}
+                {serviceSuccess && <p className="text-center text-sm text-green-600">{serviceSuccess}</p>}
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={saveService}
+                  className="flex-1 bg-black text-white py-2 rounded-lg hover:bg-gray-800"
+                >
+                  Mentés
+                </button>
+                <button
+                  type="button"
+                  onClick={closeServiceModal}
+                  className="flex-1 border py-2 rounded-lg hover:bg-gray-50"
+                >
+                  Mégse
+                </button>
+              </div>
+
+              <button
+                onClick={closeServiceModal}
+                className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 text-2xl"
+              >
+                &times;
+              </button>
+            </div>
+          </div>
+        )}
+
         {carModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4 overflow-y-auto">
             <div className="bg-white rounded-xl shadow-lg p-6 w-full max-w-lg relative">
@@ -778,16 +1671,31 @@ export default function AdminDashboard() {
                 className="space-y-4"
               >
                 <div>
-                  <label className="block mb-1 text-gray-700">Státusz módosítása</label>
+                  <label className="block mb-1 text-gray-700">Státusz</label>
+                  <div className="mt-1">
+                    <span
+                      className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${statusBadgeClasses(
+                        String(carModal.status || "Nincs státusz")
+                      )}`}
+                    >
+                      {carModal.status || "Nincs státusz"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    A kocsi státusza automatikusan a hozzá tartozó foglalás státuszát követi.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block mb-1 text-gray-700">Márka csoport</label>
                   <select
                     className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-black"
-                    value={editCarStatus}
-                    onChange={(e) => setEditCarStatus(e.target.value)}
+                    value={editCarBrandGroup}
+                    onChange={(e) => setEditCarBrandGroup(e.target.value)}
                   >
-                    <option value="Nincs státusz">Nincs státusz</option>
-                    <option value="Várakozik">Várakozik</option>
-                    <option value="Folyamatban">Folyamatban</option>
-                    <option value="Kész">Kész</option>
+                    <option value="atlagos">Átlagos (alapár)</option>
+                    <option value="nemet">Német csoport (drágább)</option>
+                    <option value="olcso">Dacia / Suzuki (olcsóbb)</option>
                   </select>
                 </div>
 
@@ -810,7 +1718,8 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                {updateFeedback && <p className="text-center text-sm text-red-600">{updateFeedback}</p>}
+                {updateError && <p className="text-center text-sm text-red-600">{updateError}</p>}
+                {updateSuccess && <p className="text-center text-sm text-green-600">{updateSuccess}</p>}
 
                 <div className="flex justify-end gap-3 pt-2">
                   <button

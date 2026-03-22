@@ -10,12 +10,14 @@ interface Car {
   id: number;
   license_plate: string;
   type: string;
+  brand_group?: string;
 }
 
 interface Service {
   id: number;
   name: string;
-  price: number;
+  price: number | string;
+  work_hours?: number;
 }
 
 export default function NewBooking() {
@@ -29,9 +31,10 @@ export default function NewBooking() {
   const [note, setNote] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [success, setSuccess] = useState<string>("");
+  const [showSummary, setShowSummary] = useState<boolean>(false);
   const [busyCarIds, setBusyCarIds] = useState<Set<number>>(new Set());
   const [services, setServices] = useState<Service[]>([]);
-  const [selectedService, setSelectedService] = useState<number | "">("");
+  const [selectedServices, setSelectedServices] = useState<number[]>([]);
   type AvailabilityDay = { date: string; times: string[] };
   const [availability, setAvailability] = useState<AvailabilityDay[]>([]);
   const [displayedMonth, setDisplayedMonth] = useState<Date>(new Date());
@@ -89,6 +92,7 @@ export default function NewBooking() {
 
   useEffect(() => {
     const loadAvailability = async () => {
+      if (!token) return;
       const pad2 = (n: number) => String(n).padStart(2, "0");
       const ymdLocal = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 
@@ -107,7 +111,7 @@ export default function NewBooking() {
       }
     };
     loadAvailability();
-  }, [displayedMonth]);
+  }, [displayedMonth, token]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -126,7 +130,7 @@ export default function NewBooking() {
           car_id: selectedCar,
           date: dateTime,
           note,
-          service_id: selectedService === "" ? undefined : selectedService,
+          service_ids: selectedServices,
         },
         token
       );
@@ -143,6 +147,26 @@ export default function NewBooking() {
       setError("Nem sikerült létrehozni a foglalást.");
     }
   };
+
+  const parseServicePrice = (value: number | string): number => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+    const selectedCarObj = cars.find((c) => c.id === selectedCar);
+  const brandGroup = selectedCarObj?.brand_group ?? "atlagos";
+
+  const priceMultiplier =
+    brandGroup === "nemet" ? 1.25 :
+    brandGroup === "olcso" ? 0.85 :
+    1;
+
+  const totalSelectedPrice = selectedServices.reduce((sum, id) => {
+    const service = services.find((s) => s.id === id);
+    return sum + parseServicePrice(service?.price ?? 0);
+  }, 0);
+
+  const totalSelectedPriceWithGroup = totalSelectedPrice * priceMultiplier;
 
   const availableDateSet = new Set(
     availability.filter((d) => Array.isArray(d.times) && d.times.length > 0).map((d) => d.date)
@@ -288,7 +312,7 @@ export default function NewBooking() {
               <label className="block mb-1 font-medium">Autó kiválasztása</label>
               <select
                 value={selectedCar}
-                onChange={(e) => setSelectedCar(Number(e.target.value))}
+                onChange={(e) => setSelectedCar(e.target.value === "" ? "" : Number(e.target.value))}
                 className="w-full border rounded-lg px-4 py-2"
                 required
               >
@@ -304,23 +328,42 @@ export default function NewBooking() {
             </div>
             <div>
               <label className="block mb-1 font-medium">Szolgáltatás választása</label>
-              <select
-                value={selectedService}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setSelectedService(val === "" ? "" : Number(val));
-                }}
-                className="w-full border rounded-lg px-4 py-2"
-              >
-                <option value="">Egyik sem a felsoroltak közül</option>
-                {services.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} – {Number(s.price).toLocaleString('hu-HU')} Ft
-                  </option>
-                ))}
-              </select>
+              <div className="w-full border rounded-lg px-4 py-3 bg-white">
+                {services.length === 0 ? (
+                  <p className="text-sm text-gray-500">Nincsenek elérhető szolgáltatások.</p>
+                ) : (
+                  <div className="flex flex-col gap-2 max-h-64 overflow-y-auto pr-1">
+                    {services.map((s) => {
+                      const checked = selectedServices.includes(s.id);
+                      return (
+                        <label key={s.id} className="flex items-center justify-between gap-3 cursor-pointer select-none">
+                          <span className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => {
+                                setSelectedServices((prev) =>
+                                  checked ? prev.filter((x) => x !== s.id) : [...prev, s.id]
+                                );
+                              }}
+                            />
+                            <span>{s.name}</span>
+                          </span>
+                          <span className="text-sm text-gray-600 whitespace-nowrap">
+                            {parseServicePrice(s.price).toLocaleString("hu-HU")} Ft
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+                <div className="mt-3 pt-2 border-t flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Összesen (tájékoztató):</span>
+                  <span className="font-medium">{Math.round(totalSelectedPriceWithGroup).toLocaleString("hu-HU")} Ft</span>
+                </div>
+              </div>
               <p className="text-xs text-gray-500 mt-1">
-                Az árak tájékoztató jellegűek és változhatnak.
+                Az árak tájékoztató jellegűek és változhatnak. A kiválasztott autó márka-csoportja alapján szorzóval számolunk.
               </p>
             </div>
             <div>
@@ -337,40 +380,58 @@ export default function NewBooking() {
           <div className="md:col-span-2 mt-4">
             {error && <p className="text-red-600 mb-2">{error}</p>}
             {success && <p className="text-green-600 mb-2">{success}</p>}
-            <h2 className="text-lg font-semibold mb-2">Foglalás összegzése</h2>
-            <div className="border rounded-lg p-4 bg-white shadow">
-              <p>
-                <span className="font-medium">Dátum:</span>{" "}
-                {selectedDate
-                  ? new Date(selectedDate).toLocaleDateString("hu-HU", {
-                      year: "numeric",
-                      month: "2-digit",
-                      day: "2-digit",
-                    })
-                  : "Nincs kiválasztva"}
-              </p>
-              <p>
-                <span className="font-medium">Időpont:</span>{" "}
-                {selectedTime || "Nincs kiválasztva"}
-              </p>
-              <p>
-                <span className="font-medium">Autó:</span>{" "}
-                {selectedCar
-                  ? cars.find((c) => c.id === selectedCar)?.license_plate
-                  : "Nincs kiválasztva"}
-              </p>
-              <p>
-                <span className="font-medium">Szolgáltatás:</span>{" "}
-                {selectedService
-                  ? (() => {
-                      const svc = services.find((s) => s.id === selectedService);
-                      return svc
-                        ? `${svc.name} – ${Number(svc.price).toLocaleString("hu-HU")} Ft`
-                        : "";
-                    })()
-                  : "Nincs kiválasztva"}
-              </p>
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <h2 className="text-lg font-semibold">Foglalás összegzése</h2>
+              <button
+                type="button"
+                onClick={() => setShowSummary((prev) => !prev)}
+                className="px-4 py-2 rounded-lg border bg-white hover:bg-gray-50"
+              >
+                {showSummary ? "Összesítés elrejtése" : "Összesítés megjelenítése"}
+              </button>
             </div>
+
+            {showSummary && (
+              <div className="border rounded-lg p-4 bg-white shadow">
+                <p>
+                  <span className="font-medium">Dátum:</span>{" "}
+                  {selectedDate
+                    ? new Date(selectedDate).toLocaleDateString("hu-HU", {
+                        year: "numeric",
+                        month: "2-digit",
+                        day: "2-digit",
+                      })
+                    : "Nincs kiválasztva"}
+                </p>
+                <p>
+                  <span className="font-medium">Időpont:</span>{" "}
+                  {selectedTime || "Nincs kiválasztva"}
+                </p>
+                <p>
+                  <span className="font-medium">Autó:</span>{" "}
+                  {selectedCar
+                    ? cars.find((c) => c.id === selectedCar)?.license_plate
+                    : "Nincs kiválasztva"}
+                </p>
+                <p>
+                  <span className="font-medium">Szolgáltatás:</span>{" "}
+                  {selectedServices.length > 0
+                    ? selectedServices
+                        .map((id) => {
+                          const svc = services.find((s) => s.id === id);
+                          return svc ? `${svc.name} (${Number(svc.price).toLocaleString("hu-HU")} Ft)` : null;
+                        })
+                        .filter(Boolean)
+                        .join(", ")
+                    : "Nincs kiválasztva"}
+                </p>
+
+                <div className="mt-3 pt-3 border-t flex items-center justify-between">
+                  <span className="text-gray-600">Összesen (tájékoztató):</span>
+                  <span className="font-semibold">{Math.round(totalSelectedPriceWithGroup).toLocaleString("hu-HU")} Ft</span>
+                </div>
+              </div>
+            )}
             <button
               type="submit"
               className="mt-4 bg-black text-white px-4 py-2 rounded-lg"

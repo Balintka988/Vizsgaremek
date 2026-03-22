@@ -1,91 +1,118 @@
 import { useState } from "react";
-import { apiPost } from "../api/api";
+import type { ChangeEvent, FormEvent } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { apiPost } from "../api/api";
 import logo from "../assets/logo-nobg.png";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 
+type RegisterForm = {
+  name: string;
+  email: string;
+  phone: string;
+  password: string;
+};
+
+type RegisterResponse = {
+  message?: string;
+  error?: string;
+};
 
 export default function Register() {
   const navigate = useNavigate();
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<RegisterForm>({
     name: "",
     email: "",
     phone: "",
-    password: ""
+    password: "",
   });
 
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+
+    setForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
   };
 
-const handleRegister = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setError("");
+  const handleRegister = async (e: FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
 
-  try {
-    const res = await apiPost("/auth/register", form);
-    console.log("Backend válasza:", res);
+    try {
+      const res = (await apiPost("/auth/register", form)) as RegisterResponse;
 
-    if (res.message && typeof res.message === "string") {
-      if (res.message.includes("Duplicate entry")) {
+      if (res?.error) {
+        setError(res.error);
+        return;
+      }
+
+      if (res?.message && res.message.includes("Duplicate entry")) {
         setError("Ezzel az email címmel már létezik felhasználó.");
         return;
       }
+
+      if (res?.message && res.message !== "Sikeres regisztráció") {
+        setError(res.message);
+        return;
+      }
+
+      if (res?.message === "Sikeres regisztráció") {
+        setSuccess("Sikeres regisztráció! Átirányítás...");
+
+        setTimeout(() => {
+          navigate("/login");
+        }, 2000);
+
+        return;
+      }
+
+      setError("Ismeretlen hiba történt.");
+    } catch (err: unknown) {
+      console.error(err);
+
+      if (err instanceof Error) {
+        if (err.message.includes("Duplicate entry")) {
+          setError("Ezzel az email címmel már létezik felhasználó.");
+          return;
+        }
+
+        setError(err.message || "Nem sikerült csatlakozni a szerverhez.");
+        return;
+      }
+
+      setError("Nem sikerült csatlakozni a szerverhez.");
     }
-
-    if (res.error) {
-      setError(res.error);
-      return;
-    }
-
-    if (res.message && res.message !== "Sikeres regisztráció") {
-      setError(res.message);
-      return;
-    }
-
-if (res.message === "Sikeres regisztráció") {
-  setError("Sikeres regisztráció! Átirányítás...");
-
-  setTimeout(() => {
-    navigate("/login");
-  }, 2000);
-
-  return;
-}
-
-    setError("Ismeretlen hiba történt.");
-    
-  } catch (err) {
-    console.error(err);
-    setError("Nem sikerült csatlakozni a szerverhez.");
-  }
-};
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-10">
-    <Link
-      to="/"
-      className="
-        absolute top-6 left-6
-        flex items-center gap-2
-        text-gray-700 hover:text-black
-        transition
-      "
-    >
-      <ArrowBackIcon fontSize="small" />
-      <span className="text-sm font-medium">Vissza a főoldalra</span>
-    </Link>
+      <Link
+        to="/"
+        className="
+          absolute top-6 left-6
+          flex items-center gap-2
+          text-gray-700 hover:text-black
+          transition
+        "
+      >
+        <ArrowBackIcon fontSize="small" />
+        <span className="text-sm font-medium">Vissza a főoldalra</span>
+      </Link>
 
-      <div className="
-        bg-white shadow-xl rounded-2xl 
-        w-full max-w-4xl 
-        grid grid-cols-1 md:grid-cols-2
-        overflow-hidden
-      ">
-
+      <div
+        className="
+          bg-white shadow-xl rounded-2xl
+          w-full max-w-4xl
+          grid grid-cols-1 md:grid-cols-2
+          overflow-hidden
+        "
+      >
         <div className="flex flex-col items-center justify-center bg-gray-100 p-8 sm:p-10">
           <img
             src={logo}
@@ -102,7 +129,6 @@ if (res.message === "Sikeres regisztráció") {
           <h2 className="text-lg sm:text-xl font-semibold mb-6">Regisztráció</h2>
 
           <form onSubmit={handleRegister} className="space-y-5">
-
             <div>
               <label className="block mb-1 text-gray-700">Név</label>
               <input
@@ -156,6 +182,7 @@ if (res.message === "Sikeres regisztráció") {
             </div>
 
             {error && <p className="text-red-600">{error}</p>}
+            {success && <p className="text-green-600">{success}</p>}
 
             <button
               type="submit"
@@ -170,10 +197,8 @@ if (res.message === "Sikeres regisztráció") {
                 Jelentkezzen be!
               </Link>
             </p>
-
           </form>
         </div>
-
       </div>
     </div>
   );
