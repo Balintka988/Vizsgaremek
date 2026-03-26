@@ -1,0 +1,15 @@
+{
+  "name": "autoszerviz-tesztek",
+  "version": "1.0.0",
+  "description": "Cypress E2E tesztek – Autószerviz vizsgaremek",
+  "scripts": {
+    "cy:open": "cypress open",
+    "cy:run": "cypress run",
+    "cy:run:backend": "cypress run --spec 'cypress/e2e/backend.cy.ts'",
+    "cy:run:frontend": "cypress run --spec 'cypress/e2e/frontend.cy.ts'"
+  },
+  "devDependencies": {
+    "cypress": "^13.17.0",
+    "typescript": "~5.9.3"
+  }
+}
