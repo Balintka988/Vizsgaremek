@@ -9,7 +9,7 @@
     "cy:run:frontend": "cypress run --spec 'cypress/e2e/frontend.cy.ts'"
   },
   "devDependencies": {
-    "cypress": "^13.17.0",
+    "cypress": "^15.13.1",
     "typescript": "~5.9.3"
   }
 }
